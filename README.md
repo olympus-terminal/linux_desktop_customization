@@ -1,317 +1,317 @@
-# Linux Desktop Customization — Portable Reference
+# Dark Glass — A Transparent Desktop Environment for GNOME/Ubuntu
 
-Complete state of the dark-glass desktop environment as of 2026-06-20.
-Machine: ADUAED16433LPLX, Ubuntu 24.04, GNOME Shell 46.0, NVIDIA RTX 4080 Laptop (driver 580.159), X11.
+A complete, portable desktop theme where every application layer is transparent black glass. Desktop wallpapers show through the terminal, file manager, and code editor. Built for Ubuntu 24.04 + GNOME Shell 46 on X11.
 
-## Design Philosophy
+![concept](https://img.shields.io/badge/theme-dark_glass-000000?style=flat-square) ![platform](https://img.shields.io/badge/platform-Ubuntu_24.04-E95420?style=flat-square) ![de](https://img.shields.io/badge/DE-GNOME_46-4A86CF?style=flat-square)
 
-Every layer is transparent black glass. The desktop wallpapers (dark sci-fi cityscapes) show through the terminal, file manager, and code editor. Selection highlights use a signature green (`rgb(150, 213, 162)`). The entire stack is dark-mode, true-black surfaces with compositor-level opacity.
+## What You Get
+
+- **Terminal** — GNOME Terminal with 42% transparent black background, green text (`rgb(150,213,162)`)
+- **File manager** — Nemo with true-black surfaces at 82% compositor opacity, wallpaper visible through every window
+- **Code editor** — VS Code with vibrancy + glass extensions, alpha-channel backgrounds on all surfaces
+- **Wallpapers** — 11 dark sci-fi cityscapes (Midjourney v7 + Topaz upscale), one per workspace, auto-switching daemon
+- **System** — Yaru-dark theme, `prefer-dark` color scheme, consistent green accent (`#96d5a2`) throughout
+
+## Quick Start
+
+### Prerequisites
+
+- Ubuntu 22.04+ or any GNOME 42-46 distro on X11 (Wayland partial — see Compatibility)
+- These packages:
+  ```bash
+  sudo apt install gnome-shell gnome-terminal nemo wmctrl xdotool xbindkeys
+  ```
+- VS Code (optional — skip Section 5 if not using it)
+
+### Automated Install
+
+```bash
+git clone https://github.com/olympus-terminal/linux_desktop_customization.git
+cd linux_desktop_customization
+chmod +x restore.sh
+./restore.sh --dry-run   # preview what will be changed
+./restore.sh             # apply everything
+```
+
+Then log out and back in, or restart GNOME Shell: `killall -HUP gnome-shell`
+
+### What `restore.sh` Does
+
+| Step | Action | Files touched |
+|------|--------|---------------|
+| 1 | GTK3 dark-glass CSS | `~/.config/gtk-3.0/gtk.css` |
+| 2 | VS Code settings + extensions | `~/.config/Code/User/settings.json` |
+| 3 | Nemo glass wrapper script | `~/.local/bin/nemo-glass` |
+| 4 | Wallpaper switching daemon | `~/Documents/desktops/workspace-wallpapers-fast.sh` |
+| 5 | Autostart for wallpaper daemon | `~/.config/autostart/workspace-wallpapers.desktop` |
+| 6 | Ctrl+Space keybinding | `~/.xbindkeysrc` |
+| 7 | dconf databases (terminal, theme, Nemo, WM, extensions, background) | dconf user database |
+| 8 | Wallpaper images (11 PNGs, ~119 MB) | `~/Documents/desktops/MJ7-Topaz/light-processed-dark20/` |
+| 9 | System no-suspend override (needs sudo) | `/etc/dconf/db/local.d/00-no-suspend` |
+
+### Manual / Selective Install
+
+Pick the pieces you want:
+
+**Theme only** (no wallpapers, no Nemo glass):
+```bash
+dconf load /org/gnome/desktop/interface/ < configs/gnome-desktop-interface.dconf
+dconf load /org/gnome/terminal/ < configs/gnome-terminal.dconf
+```
+
+**VS Code only**:
+```bash
+cp configs/vscode-settings.json ~/.config/Code/User/settings.json
+cat configs/vscode-extensions.txt | xargs -L1 code --install-extension
+```
+
+**Nemo glass only**:
+```bash
+cp configs/gtk-3.0-gtk.css ~/.config/gtk-3.0/gtk.css
+cp configs/nemo-glass ~/.local/bin/nemo-glass && chmod +x ~/.local/bin/nemo-glass
+dconf load /org/nemo/ < configs/nemo.dconf
+# Launch with: nemo-glass [folder]
+```
+
+**Wallpapers only**:
+```bash
+mkdir -p ~/Documents/desktops/MJ7-Topaz/light-processed-dark20
+cp wallpapers/*.png ~/Documents/desktops/MJ7-Topaz/light-processed-dark20/
+cp configs/workspace-wallpapers-fast.sh ~/Documents/desktops/
+chmod +x ~/Documents/desktops/workspace-wallpapers-fast.sh
+cp configs/workspace-wallpapers.desktop ~/.config/autostart/
+# Test: ~/Documents/desktops/workspace-wallpapers-fast.sh --test
+```
 
 ---
 
-## 1. System Theme & Appearance
+## How Each Layer Works
+
+### 1. System Theme
+
+Dark mode everywhere via `prefer-dark` color scheme + Yaru-dark GTK theme. The dconf databases set:
 
 | Setting | Value |
 |---------|-------|
 | GTK theme | `Yaru-dark` |
-| Icon theme | `Yaru` |
-| Cursor theme | `Yaru` |
+| Icon/cursor theme | `Yaru` |
 | Color scheme | `prefer-dark` |
-| UI font | `Ubuntu Sans 11` |
-| Titlebar font | `Ubuntu Sans Bold 11` |
-| Monospace font | `Ubuntu Sans Mono 13` |
-| Document font | `Sans 11` |
+| Fonts | Ubuntu Sans 11 (UI), Ubuntu Sans Bold 11 (titlebar), Ubuntu Sans Mono 13 (mono) |
 | Font rendering | rgba subpixel, slight hinting |
 | Clock | 24h with date |
-| Animations | enabled |
-| Hot corners | disabled |
-| Shell theme | default (no custom) |
 
-### GNOME Extensions (enabled)
+GNOME extensions used: DING (desktop icons), tiling-assistant, ubuntu-appindicators, ubuntu-dock.
 
-| Extension | Purpose |
-|-----------|---------|
-| `ding@rastersoft.com` | Desktop Icons NG — transparent desktop icon overlay |
-| `tiling-assistant@ubuntu.com` | Window tiling |
-| `ubuntu-appindicators@ubuntu.com` | System tray indicators |
-| `ubuntu-dock@ubuntu.com` | Dock |
+### 2. GNOME Terminal
 
-### System-level dconf overrides (`/etc/dconf/db/local.d/00-no-suspend`)
+Black background with 42% transparency (compositor-rendered). Green foreground text matches the accent color. Standard 16-color palette.
 
-```ini
-[org/gnome/settings-daemon/plugins/power]
-sleep-inactive-ac-type='nothing'
-sleep-inactive-battery-type='nothing'
+| Setting | Value |
+|---------|-------|
+| Background | `rgb(0,0,0)`, 42% transparent |
+| Foreground | `rgb(150,213,162)` |
+| Size | 96x42 |
+| Theme colors | custom (overridden) |
 
-[org/gnome/desktop/session]
-idle-delay=uint32 0
+### 3. Nemo File Manager — Dark Glass
 
-[org/gnome/desktop/screensaver]
-idle-activation-enabled=false
+Two components work together:
+
+**GTK3 CSS** (`~/.config/gtk-3.0/gtk.css`) — Sets all window surfaces to true black `#000000`. This is a global GTK3 override, so it affects all GTK3 apps. The key constraint is the `:not(.desktopwindow)` selector that prevents the DING desktop overlay from going opaque (see Troubleshooting).
+
+**nemo-glass wrapper** (`~/.local/bin/nemo-glass`) — Launches Nemo and runs a background watcher that applies `_NET_WM_WINDOW_OPACITY` (82% opacity) on all Nemo windows via `xprop`. The watcher polls every 0.5s and self-terminates when Nemo exits. Opacity is configurable:
+```bash
+NEMO_GLASS_OPACITY=0.75 nemo-glass ~/Documents
 ```
 
-### Keybinding (`~/.xbindkeysrc`)
+To make `nemo-glass` the default file manager, set it in your `.desktop` file associations or launch via the alias.
 
+### 4. Workspace Wallpapers
+
+A bash daemon (`workspace-wallpapers-fast.sh`) polls `wmctrl` at 50ms intervals to detect workspace switches and sets the wallpaper via `gsettings`. Images from the wallpaper directory are assigned to workspaces in alphabetical order.
+
+The daemon auto-starts at login via `~/.config/autostart/workspace-wallpapers.desktop`.
+
+**Using your own wallpapers**: Replace the images in `~/Documents/desktops/MJ7-Topaz/light-processed-dark20/` with your own. Any `.jpg`, `.jpeg`, `.png`, `.bmp`, or `.tiff` files work. They're assigned to workspaces alphabetically — rename with numeric prefixes (e.g. `01-morning.png`, `02-night.png`) to control the order.
+
+**Custom wallpaper directory**: Edit the `DEFAULT_BASE_DIR` and `IMAGE_DIR` variables in the script, or pass `--image-dir`:
+```bash
+./workspace-wallpapers-fast.sh --fast-poll --image-dir ~/Pictures/my-wallpapers
 ```
-"gnome-terminal"
-  Control + space
-```
+
+### 5. VS Code
+
+Three extensions create the transparency stack:
+
+| Extension | Role |
+|-----------|------|
+| `vscode-vibrancy-continued` | Blurs the window background for a frosted-glass effect |
+| `glassit` | Sets window-level opacity (alpha 230/255) |
+| `adwaita-theme` | Native GTK integration for consistent theming |
+
+The `settings.json` overrides nearly every VS Code surface color with alpha-channel hex values (`#00000094` = black at ~58% opacity, `#00000000` = fully transparent). Widgets and menus use `#1e1e1ee6` (mostly opaque) for readability.
+
+Token colors: green strings (`#85ff85`), cyan keywords (`#55ffff`), signature green functions (`#96d5a2`), muted comments (`#5c6370`).
+
+**Note**: After installing `vscode-vibrancy-continued`, VS Code will prompt you to allow custom CSS injection. You must click "Allow" and restart VS Code.
 
 ---
 
-## 2. Workspace Wallpapers
+## Compatibility
 
-Per-workspace wallpapers via a polling daemon that auto-starts at login.
+### Tested On
 
-### How it works
+- Ubuntu 24.04 LTS, GNOME Shell 46.0, X11, NVIDIA RTX 4080 (driver 580)
 
-- **Daemon**: `~/Documents/desktops/workspace-wallpapers-fast.sh --fast-poll`
-- **Autostart**: `~/.config/autostart/workspace-wallpapers.desktop`
-- **Image source**: `~/Documents/desktops/MJ7-Topaz/light-processed-dark20/` (11 images, ~118 MB total)
-- **Images**: Midjourney v7 dark futuristic cityscapes, Topaz upscaled to 6513x1832 or 4096x1152 (panoramic for 3840x1080 super-ultrawide)
-- **Mechanism**: Polls `wmctrl` at 50ms intervals, sets wallpaper via `gsettings set org.gnome.desktop.background picture-uri[-dark]`
-- **Workspaces**: 4 (dynamic workspaces enabled, so GNOME can add more)
+### Should Work On
 
-### Critical fix: DING + dark-glass CSS conflict
+- Ubuntu 22.04+ / Fedora 38+ / any GNOME 42-46 distro on X11
+- Any GPU with compositing support
+- Displays of any resolution (wallpapers are 6513x1832 and 4096x1152 panoramics optimized for ultrawide; GNOME will zoom/crop for standard displays)
 
-The GTK3 dark-glass CSS (`~/.config/gtk-3.0/gtk.css`) sets `window.background { background-color: #000000 }` for the Nemo glass effect. This also hits DING's desktop overlay window, painting it opaque black and hiding the wallpaper.
+### Wayland Limitations
 
-**Fix**: All `window.background` rules must use `:not(.desktopwindow)` to exclude DING:
+- **nemo-glass**: The `xprop`-based opacity wrapper requires X11. On Wayland, Nemo will render with the dark CSS but without transparency. A Wayland alternative would need a compositor-specific opacity rule (e.g. Mutter window rules or Sway/Hyprland `opacity` directives).
+- **Wallpaper daemon**: `wmctrl` requires X11. On Wayland, replace with `gdbus` workspace monitoring.
+- **xbindkeys**: X11 only. On Wayland, use GNOME custom keyboard shortcuts via `gsettings` or Settings > Keyboard.
+
+### Adapting for Other Distros
+
+- **Non-Ubuntu GTK themes**: Replace `Yaru-dark` / `Yaru` with your distro's dark theme in `configs/gnome-desktop-interface.dconf`. The glass effect comes from the CSS and compositor opacity, not the GTK theme itself.
+- **Non-GNOME desktops**: The wallpaper daemon, GTK CSS, and Nemo wrapper are GNOME/GTK-specific. For KDE/Plasma, the transparency approach is completely different (use Kvantum themes + Plasma window rules).
+- **Cinnamon**: Nemo is Cinnamon's native file manager, so the glass wrapper works. Replace GNOME-specific dconf paths with Cinnamon equivalents.
+
+---
+
+## Customization Guide
+
+### Changing the Accent Color
+
+The signature green (`rgb(150, 213, 162)` / `#96d5a2`) appears in three places:
+
+1. **Terminal foreground**: `configs/gnome-terminal.dconf` — change `foreground-color`
+2. **GTK3 selection highlight**: `configs/gtk-3.0-gtk.css` — change `rgba(150, 213, 162, 0.30)` in the selection rules
+3. **VS Code**: `configs/vscode-settings.json` — change `functions` in `editor.tokenColorCustomizations` and the selection/hover colors in `workbench.colorCustomizations`
+
+### Adjusting Transparency Levels
+
+| Layer | Where | Default |
+|-------|-------|---------|
+| Terminal | `configs/gnome-terminal.dconf` — `background-transparency-percent` | 42% |
+| Nemo | `NEMO_GLASS_OPACITY` env var or edit `OPACITY` in `configs/nemo-glass` | 0.82 (82%) |
+| VS Code | `configs/vscode-settings.json` — `glassit.alpha` (0-255) | 230 |
+| VS Code surfaces | Alpha channel in hex colors (`94` = 58%, `e6` = 90%, `00` = 0%) | varies |
+
+### Using Different Wallpapers
+
+Drop images into the wallpaper directory. The daemon assigns them to workspaces in alphabetical order. For best results:
+- Use dark/moody images (light wallpapers clash with the dark glass)
+- Match your display resolution or go larger (GNOME will zoom to fit)
+- Use `.png` or `.jpg` under 50 MB per file
+- Keep total image count to your number of workspaces or fewer
+
+---
+
+## Troubleshooting
+
+### Black desktop — wallpaper is invisible
+
+**Symptom**: Desktop is solid black. Wallpaper briefly flashes when GNOME Shell restarts but goes black again.
+
+**Cause**: The GTK3 CSS rule `window.background { background-color: #000000 }` applies to the DING (Desktop Icons NG) extension's overlay window, painting it opaque black over the wallpaper.
+
+**Fix**: Ensure all `window.background` rules in `~/.config/gtk-3.0/gtk.css` use the `:not(.desktopwindow)` exclusion:
 ```css
 window.background:not(.desktopwindow) { background-color: #000000; }
 ```
 
-### Critical fix: gsettings vs dconf
-
-The daemon must use `gsettings set` (not `dconf write`) to change wallpapers. GNOME Shell 46 monitors gsettings change notifications via D-Bus — raw `dconf write` applies briefly but gets overwritten by the stale gsettings value, causing a flash-then-black.
-
-### Autostart file (`~/.config/autostart/workspace-wallpapers.desktop`)
-
-```ini
-[Desktop Entry]
-Type=Application
-Name=Workspace Wallpapers
-Comment=Automatically change wallpapers when switching workspaces
-Exec=/home/drn2/Documents/desktops/workspace-wallpapers-fast.sh --fast-poll
-Icon=preferences-desktop-wallpaper
-Terminal=false
-Categories=Utility;
-StartupNotify=false
-X-GNOME-Autostart-enabled=true
-```
-
----
-
-## 3. GNOME Terminal
-
-| Setting | Value |
-|---------|-------|
-| Background | `rgb(0,0,0)` with 42% transparency |
-| Foreground | `rgb(150,213,162)` (signature green) |
-| Default size | 96 columns x 42 rows |
-| Theme colors | overridden (custom) |
-| GPU acceleration | N/A (uses system compositor) |
-
-### Color palette (16 standard colors)
-
-```
- 0 rgb(0,0,0)         8 rgb(85,85,85)
- 1 rgb(170,0,0)       9 rgb(255,85,85)
- 2 rgb(0,170,0)      10 rgb(85,255,85)
- 3 rgb(170,85,0)     11 rgb(255,255,85)
- 4 rgb(0,0,170)      12 rgb(85,85,255)
- 5 rgb(170,0,170)    13 rgb(255,85,255)
- 6 rgb(0,170,170)    14 rgb(85,255,255)
- 7 rgb(170,170,170)  15 rgb(255,255,255)
-```
-
-### Apply via dconf
-
-```bash
-dconf load /org/gnome/terminal/ < configs/gnome-terminal.dconf
-```
-
----
-
-## 4. Nemo File Manager (Dark Glass)
-
-Two components create the glass effect:
-
-### 4a. GTK3 CSS (`~/.config/gtk-3.0/gtk.css`)
-
-Sets all Nemo surfaces to true black `#000000`. The compositor then applies partial opacity to make the wallpaper show through. Selection highlight is `rgba(150, 213, 162, 0.30)`.
-
-**Important**: The `:not(.desktopwindow)` exclusion on `window.background` rules is required to avoid breaking DING's desktop overlay (see Section 2).
-
-### 4b. nemo-glass wrapper (`~/.local/bin/nemo-glass`)
-
-Launches Nemo and runs a background watcher (polls every 0.5s) that sets `_NET_WM_WINDOW_OPACITY` on all Nemo windows to 82% opacity. Self-terminates when Nemo exits. Opacity is configurable via `NEMO_GLASS_OPACITY` env var.
-
-### Nemo preferences (non-default)
-
-| Setting | Value |
-|---------|-------|
-| Default view | list-view |
-| Sort by | modification time, newest first |
-| Directories first | yes |
-| Ignore view metadata | yes (global view always used) |
-| Visible columns | name, size, date_modified |
-| Desktop icons | enabled (but all individual icons hidden) |
-| Ignored desktop handlers | conky, csd-background |
-
----
-
-## 5. VS Code
-
-### Theme stack
-
-| Layer | Value |
-|-------|-------|
-| Base theme | `Dark+` |
-| Vibrancy | `vscode-vibrancy-continued` — type: `under-window`, theme: `Dark (Only Subbar)`, opacity: `-1` |
-| Glass | `glassit` — alpha: `230` |
-| Adwaita | `piousdeer.adwaita-theme` (for native GTK integration) |
-
-### Color overrides (`workbench.colorCustomizations`)
-
-All editor surfaces use alpha channels for see-through:
-
-| Surface | Color |
-|---------|-------|
-| Editor background | `#00000094` |
-| Sidebar background | `#00000094` |
-| Activity bar | `#00000094` |
-| Title bar | `#00000000` (fully transparent) |
-| Active tab | `#00000000` |
-| Inactive tab | `#00000094` |
-| Terminal background | `#00000000` |
-| Panel background | `#00000000` |
-| Status bar | `#00000000` |
-| Widgets/menus | `#1e1e1ee6` (mostly opaque for readability) |
-| Selection | `#1a3a1a` |
-| Hover | `#0d1f0d` |
-
-### Token colors
-
-| Token | Color |
-|-------|-------|
-| Comments | `#5c6370` |
-| Strings | `#85ff85` |
-| Keywords | `#55ffff` |
-| Functions | `#96d5a2` (signature green) |
-
-### Editor settings
-
-| Setting | Value |
-|---------|-------|
-| Font | `Liberation Mono, monospace` |
-| Minimap | disabled |
-| Breadcrumbs | disabled |
-| Activity bar | hidden |
-| Status bar | hidden |
-| Title bar | custom |
-| Menu bar | toggle |
-| GPU acceleration (terminal) | off |
-
-### Extensions
-
-```
-illixion.vscode-vibrancy-continued
-ms-python.debugpy
-ms-python.python
-ms-python.vscode-pylance
-ms-python.vscode-python-envs
-ms-vscode-remote.remote-ssh
-ms-vscode-remote.remote-ssh-edit
-ms-vscode.remote-explorer
-piousdeer.adwaita-theme
-s-nlf-fh.glassit
-```
-
----
-
-## 6. Shell Aliases & Environment
-
-### Key aliases (`~/.bashrc`)
-
-| Alias | Command |
-|-------|---------|
-| `jubail` | SSH to NYU Abu Dhabi HPC |
-| `cl` | Launch Claude Code (Opus, skip permissions) |
-| `d` | Dictation/TTS via conda env |
-| `c` | Activate circos_gorilla conda env |
-| `up` | `sudo apt update && sudo apt upgrade -y` |
-| `l` | `ls -lthr` |
-| `vpn` / `vpn2` | NYU Abu Dhabi VPN split tunnel |
-| `hitme` | Play random MP3 from current dir |
-| `obs` | Launch Obsidian AppImage |
-| `spark1` | SSH to DGX Spark |
-| `cla` | Copy GreatClaudeConfig.md template to cwd |
-| `fig` | Copy FIGURE_PROTOCOL_v1.2.md template to cwd |
-
-### Environment
-
-| Variable | Value |
-|----------|-------|
-| `GOPATH` | `$HOME/go` |
-| `CUDA` | `/usr/local/cuda-12.2` (bin + lib64) |
-| `BLASTDB` | `/data/blastdb` |
-| `NVM_DIR` | `$HOME/.nvm` |
-| `NO_PROXY` | `api.anthropic.com,statsig.anthropic.com,sentry.io,localhost,127.0.0.1` |
-| Conda | miniconda3 (auto-initialized) |
-| Deno | `$HOME/.deno/bin` in PATH |
-
----
-
-## Portability / Restore Checklist
-
-1. **System packages**: `gnome-shell`, `gnome-terminal`, `nemo`, `wmctrl`, `xdotool`, `xprop`, `imagemagick` (for `identify`)
-2. **GNOME extensions**: Install `ding@rastersoft.com`, `tiling-assistant@ubuntu.com`, `ubuntu-appindicators@ubuntu.com`, `ubuntu-dock@ubuntu.com`
-3. **Copy config files** (all paths relative to `$HOME`):
-   - `.config/gtk-3.0/gtk.css`
-   - `.config/Code/User/settings.json`
-   - `.config/autostart/workspace-wallpapers.desktop`
-   - `.local/bin/nemo-glass`
-   - `.xbindkeysrc`
-   - Wallpaper images to `Documents/desktops/MJ7-Topaz/light-processed-dark20/`
-   - `Documents/desktops/workspace-wallpapers-fast.sh`
-4. **Load dconf settings**:
-   ```bash
-   dconf load /org/gnome/terminal/ < configs/gnome-terminal.dconf
-   dconf load /org/gnome/desktop/interface/ < configs/gnome-desktop-interface.dconf
-   dconf load /org/gnome/desktop/background/ < configs/gnome-desktop-background.dconf
-   dconf load /org/nemo/ < configs/nemo.dconf
-   dconf load /org/gnome/shell/extensions/ < configs/gnome-extensions.dconf
-   dconf load /org/gnome/desktop/wm/preferences/ < configs/gnome-wm.dconf
-   ```
-5. **Set dark mode**: `gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'`
-6. **Install VS Code extensions**:
-   ```bash
-   cat configs/vscode-extensions.txt | xargs -L1 code --install-extension
-   ```
-7. **Make scripts executable**: `chmod +x ~/Documents/desktops/workspace-wallpapers-fast.sh ~/.local/bin/nemo-glass`
-8. **System overrides** (requires sudo): Copy `configs/00-no-suspend` to `/etc/dconf/db/local.d/` and run `sudo dconf update`
-
----
-
-## Known Issues & Fixes
-
-### Black desktop (wallpaper invisible)
-
-**Cause**: `~/.config/gtk-3.0/gtk.css` rule `window.background { background-color: #000000 }` applies to DING's desktop overlay, painting it opaque black over the wallpaper.
-
-**Fix**: Use `window.background:not(.desktopwindow)` on all rules.
-
-**Diagnosis**: Kill DING (`pkill gjs`) — if wallpaper flashes then goes black when DING respawns, this is the issue.
+**Diagnosis**: Run `pkill gjs` to kill DING. If the wallpaper appears and then goes black when DING respawns (~2 seconds), this is the issue.
 
 ### Wallpaper flashes then goes black
 
-**Cause**: Wallpaper daemon using `dconf write` instead of `gsettings set`. GNOME Shell 46 monitors gsettings via D-Bus; raw dconf writes apply momentarily but get overwritten.
+**Symptom**: When switching workspaces, the new wallpaper appears for an instant then the screen goes black.
 
-**Fix**: Use `gsettings set org.gnome.desktop.background picture-uri` in the daemon.
+**Cause**: The wallpaper daemon is using `dconf write` instead of `gsettings set`. GNOME Shell 46 monitors gsettings via D-Bus; raw dconf writes apply momentarily but the gsettings layer reasserts its (different) value.
 
-### GNOME Shell background stuck (no wallpaper renders at all)
+**Fix**: The daemon must use `gsettings set org.gnome.desktop.background picture-uri` and `picture-uri-dark`.
 
-**Cause**: Rapid wallpaper changes at boot cancel image loads ("Failed to open sliced image: Operation was cancelled" in `journalctl`). Background actor gets stuck.
+### No wallpaper renders at all (even from GNOME Settings)
 
-**Fix**: `killall -HUP gnome-shell` (restarts compositor without closing windows).
+**Symptom**: Every wallpaper attempt results in black. Even the GNOME Settings > Appearance panel shows black.
+
+**Cause**: Rapid wallpaper changes (e.g. daemon writing at 50ms intervals during boot) cancel GNOME Shell's image loading pipeline. The error `Failed to open sliced image: Operation was cancelled` appears in the journal. The background rendering actor gets stuck.
+
+**Fix**: Restart GNOME Shell (safe — windows stay open):
+```bash
+killall -HUP gnome-shell
+```
+
+**Prevention**: The daemon should not re-set the wallpaper on every poll cycle. It should only write when the workspace actually changes or when the current wallpaper doesn't match the expected one.
+
+### VS Code vibrancy not working
+
+After installing `vscode-vibrancy-continued`, VS Code will show a warning about custom CSS modifications. You must:
+1. Click "Allow" on the notification
+2. Restart VS Code completely
+3. If it still doesn't work, run VS Code with `--enable-features=UseOzonePlatform` or check that your compositor supports blur
+
+### Nemo opens without transparency
+
+- Ensure you're launching via `nemo-glass`, not plain `nemo`
+- Check that `xdotool` and `xprop` are installed
+- Verify compositing is enabled: `xprop -root | grep -i composite`
+- On Wayland, the `xprop` approach won't work (see Compatibility section)
+
+---
+
+## File Reference
+
+```
+linux_desktop_customization/
+  README.md                              # this file
+  restore.sh                             # automated installer (supports --dry-run)
+  configs/
+    gtk-3.0-gtk.css                      # GTK3 dark-glass CSS (Nemo + all GTK3 apps)
+    vscode-settings.json                 # VS Code settings with transparency
+    vscode-extensions.txt                # VS Code extension list
+    nemo-glass                           # Nemo transparency wrapper script
+    workspace-wallpapers-fast.sh         # per-workspace wallpaper daemon
+    workspace-wallpapers.desktop         # XDG autostart for wallpaper daemon
+    xbindkeysrc                          # Ctrl+Space -> gnome-terminal
+    gnome-terminal.dconf                 # terminal profile (colors, transparency, size)
+    gnome-desktop-interface.dconf        # system theme, fonts, color scheme
+    gnome-desktop-background.dconf       # wallpaper settings
+    gnome-wm.dconf                       # window manager prefs (workspaces, titlebar)
+    gnome-extensions.dconf               # GNOME Shell extension settings
+    nemo.dconf                           # Nemo file manager preferences
+    00-no-suspend                        # system dconf override (disable sleep/screensaver)
+  wallpapers/                            # 11 dark sci-fi cityscape PNGs (~119 MB total)
+    *.png
+```
+
+## For AI Agents Implementing This
+
+If you are a Claude or other AI agent helping a user install this theme:
+
+1. **Check prerequisites first**: Run `gnome-shell --version` to confirm GNOME 42-46, and `echo $XDG_SESSION_TYPE` to confirm X11 vs Wayland. If Wayland, warn about the limitations listed above.
+
+2. **Back up before overwriting**: Before copying any config file, check if the target exists and back it up:
+   ```bash
+   [[ -f ~/.config/gtk-3.0/gtk.css ]] && cp ~/.config/gtk-3.0/gtk.css ~/.config/gtk-3.0/gtk.css.bak
+   ```
+
+3. **The GTK CSS is global**: `gtk-3.0/gtk.css` affects ALL GTK3 applications, not just Nemo. The user should understand that every GTK3 app will get true-black backgrounds. If they don't want this, skip the CSS and use Nemo's built-in dark mode instead (they'll lose the glass effect).
+
+4. **The DING exclusion is critical**: If the user has the DING extension (default on Ubuntu), the `:not(.desktopwindow)` exclusion in the CSS is mandatory. Without it, the desktop will be solid black. This is the single most common issue.
+
+5. **dconf paths are hardcoded to GNOME**: The dconf databases assume GNOME's schema paths. Don't load them on Cinnamon, KDE, or other DEs — the paths are different and it will either silently fail or write to wrong keys.
+
+6. **Wallpaper paths in the autostart file are absolute**: The `.desktop` autostart file contains a hardcoded path to the user's home directory. After copying, update the `Exec=` line to match the actual install location.
+
+7. **VS Code vibrancy requires user interaction**: The vibrancy extension modifies VS Code's internal CSS. After install, VS Code will show a "corrupt installation" warning — the user must click through this. You cannot automate this step.
+
+8. **Test after each layer**: Don't apply everything at once and hope. Apply one layer, verify it works, then move to the next. Order: system theme -> terminal -> wallpapers -> Nemo glass -> VS Code.
+
+9. **If wallpaper goes black after applying CSS**: This is the DING conflict. Fix the CSS `:not(.desktopwindow)` exclusion, then restart GNOME Shell with `killall -HUP gnome-shell`.
+
+10. **The restore script is idempotent**: Running it multiple times is safe. It overwrites configs but doesn't accumulate state.
