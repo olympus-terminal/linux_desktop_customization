@@ -12,15 +12,96 @@ A complete, portable desktop theme where every application layer is transparent 
 - **Wallpapers** — 11 dark sci-fi cityscapes (Midjourney v7 + Topaz upscale), one per workspace, auto-switching daemon
 - **System** — Yaru-dark theme, `prefer-dark` color scheme, consistent green accent (`#96d5a2`) throughout
 
+## Dependencies
+
+### Tested Versions (known-good)
+
+| Component | Version | Package |
+|-----------|---------|---------|
+| **OS** | Ubuntu 24.04.4 LTS | — |
+| **Kernel** | 6.17.0-35-generic | — |
+| **GNOME Shell** | 46.0 | `gnome-shell 46.0-0ubuntu6~24.04.14` |
+| **Mutter** | 46.2 | `mutter-common 46.2-1ubuntu0.24.04.15` |
+| **GTK3** | 3.24.41 | `libgtk-3-0t64 3.24.41-4ubuntu1.3` |
+| **GTK4** | 4.14.5 | `libgtk-4-1 4.14.5+ds-0ubuntu0.10` |
+| **X11 session** | x11 | — |
+| **GPU driver** | NVIDIA 580.159.03 | — |
+| **Bash** | 5.2.21 | — |
+
+### Required Packages
+
+```bash
+sudo apt install gnome-shell gnome-terminal nemo wmctrl xdotool x11-utils xbindkeys
+```
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `gnome-terminal` | 3.52.0 | Terminal with transparency support |
+| `nemo` | 6.0.2 | File manager (glass effect target) |
+| `wmctrl` | 1.07 | Workspace detection for wallpaper daemon |
+| `xdotool` | 3.20160805.1 | Window search for nemo-glass opacity wrapper |
+| `x11-utils` | 7.7+6 | Provides `xprop` for setting window opacity |
+| `xbindkeys` | 1.8.7 | Custom keybinding (Ctrl+Space -> terminal) |
+
+### GNOME Shell Extensions
+
+Installed via `apt` on Ubuntu (or from [extensions.gnome.org](https://extensions.gnome.org) on other distros):
+
+```bash
+sudo apt install gnome-shell-extension-desktop-icons-ng gnome-shell-extension-appindicator gnome-shell-extension-ubuntu-dock
+```
+
+| Extension | Version | Package | Required? |
+|-----------|---------|---------|-----------|
+| `ding@rastersoft.com` (Desktop Icons NG) | 47.0.9 | `gnome-shell-extension-desktop-icons-ng 46+really47.0.9-1ubuntu5` | Yes — without it, no desktop icons; with it, the CSS `:not(.desktopwindow)` fix is critical |
+| `tiling-assistant@ubuntu.com` | 46 | Ships with Ubuntu 24.04 | Optional — window tiling |
+| `ubuntu-appindicators@ubuntu.com` | 58 | `gnome-shell-extension-appindicator 58-1ubuntu24.04.1` | Optional — system tray |
+| `ubuntu-dock@ubuntu.com` | 90 | `gnome-shell-extension-ubuntu-dock 90ubuntu3` | Optional — dock |
+
+After installing, enable:
+```bash
+gnome-extensions enable ding@rastersoft.com
+gnome-extensions enable tiling-assistant@ubuntu.com
+gnome-extensions enable ubuntu-appindicators@ubuntu.com
+gnome-extensions enable ubuntu-dock@ubuntu.com
+```
+
+### VS Code (optional)
+
+| Component | Version |
+|-----------|---------|
+| VS Code | 1.125.0 (x64) |
+| `illixion.vscode-vibrancy-continued` | 1.1.81 |
+| `s-nlf-fh.glassit` | 0.2.6 |
+| `piousdeer.adwaita-theme` | 1.1.0 |
+| `ms-python.python` | 2026.4.0 |
+| `ms-python.vscode-pylance` | 2026.2.1 |
+| `ms-python.debugpy` | 2026.6.0 |
+| `ms-python.vscode-python-envs` | 1.36.0 |
+| `ms-vscode-remote.remote-ssh` | 0.124.0 |
+| `ms-vscode-remote.remote-ssh-edit` | 0.87.0 |
+| `ms-vscode.remote-explorer` | 0.5.0 |
+
+The theme extensions (`vscode-vibrancy-continued`, `glassit`, `adwaita-theme`) are required for the glass effect. The Python and Remote SSH extensions are development tools — install only if needed.
+
+```bash
+# Theme extensions only:
+code --install-extension illixion.vscode-vibrancy-continued
+code --install-extension s-nlf-fh.glassit
+code --install-extension piousdeer.adwaita-theme
+
+# All extensions:
+cat configs/vscode-extensions.txt | xargs -L1 code --install-extension
+```
+
+---
+
 ## Quick Start
 
 ### Prerequisites
 
 - Ubuntu 22.04+ or any GNOME 42-46 distro on X11 (Wayland partial — see Compatibility)
-- These packages:
-  ```bash
-  sudo apt install gnome-shell gnome-terminal nemo wmctrl xdotool xbindkeys
-  ```
+- Install required packages and extensions (see Dependencies above)
 - VS Code (optional — skip Section 5 if not using it)
 
 ### Automated Install
