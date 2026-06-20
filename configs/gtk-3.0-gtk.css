@@ -1,0 +1,27 @@
+/* Nemo dark-glass base. True black surfaces; compositor opacity (via nemo-glass
+ * wrapper, _NET_WM_WINDOW_OPACITY) provides the see-through glass. */
+window.background:not(.desktopwindow),
+window.background:not(.desktopwindow) .view,
+window.background:not(.desktopwindow) treeview.view,
+window.background:not(.desktopwindow) iconview,
+window.background:not(.desktopwindow) scrolledwindow,
+window.background:not(.desktopwindow) viewport,
+window.background:not(.desktopwindow) notebook,
+window.background:not(.desktopwindow) .sidebar,
+window.background:not(.desktopwindow) .nemo-places-sidebar,
+window.background:not(.desktopwindow) stack.sidebar { background-color: #000000; }
+
+window.background:not(.desktopwindow) headerbar,
+window.background:not(.desktopwindow) .header-bar,
+window.background:not(.desktopwindow) .toolbar,
+window.background:not(.desktopwindow) .primary-toolbar { background-color: #0a0a0a; }
+
+window.background:not(.desktopwindow) treeview.view:not(:selected),
+window.background:not(.desktopwindow) .view:not(:selected) { background-color: #000000; }
+
+window.background treeview.view:selected,
+window.background .view:selected,
+window.background iconview:selected {
+  background-color: rgba(150, 213, 162, 0.30);
+  color: #ffffff;
+}

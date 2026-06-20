@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Launch Nemo with self-restoring dark-glass opacity.
+# The watcher lives ONLY as long as Nemo is running; when Nemo exits, it exits.
+# No Nemo process => no watcher => zero idle cost.
+
+OPACITY="${NEMO_GLASS_OPACITY:-0.82}"
+CARD=$(awk -v o="$OPACITY" 'BEGIN{printf "%d", o*4294967295}')
+
+# Start nemo (pass through any args, e.g. a folder)
+/usr/bin/nemo "$@" &
+NEMO_PID=$!
+
+# Watcher: re-assert opacity on every Nemo window, but ONLY while nemo runs.
+# pgrep gate ensures it dies with Nemo even if started independently.
+(
+  while pgrep -x nemo >/dev/null 2>&1; do
+    for wid in $(xdotool search --class nemo 2>/dev/null); do
+      cur=$(xprop -id "$wid" _NET_WM_WINDOW_OPACITY 2>/dev/null | grep -o '[0-9]*$')
+      # Only set if missing or drifted, to avoid needless X traffic
+      if [ "$cur" != "$CARD" ]; then
+        xprop -id "$wid" -f _NET_WM_WINDOW_OPACITY 32c -set _NET_WM_WINDOW_OPACITY "$CARD" 2>/dev/null
+      fi
+    done
+    sleep 0.5
+  done
+) &
+WATCHER_PID=$!
+
+# When this launcher's nemo finishes, make sure the watcher is gone too.
+wait "$NEMO_PID" 2>/dev/null
+kill "$WATCHER_PID" 2>/dev/null

@@ -1,0 +1,16 @@
+[list-view]
+default-column-order=['name', 'size', 'date_modified']
+default-visible-columns=['name', 'size', 'date_modified']
+
+[preferences]
+default-folder-viewer='list-view'
+default-sort-in-reverse-order=true
+default-sort-order='mtime'
+ignore-view-metadata=true
+inherit-folder-viewer=true
+
+[window-state]
+geometry='992x809+62+32'
+maximized=false
+sidebar-bookmark-breakpoint=5
+start-with-sidebar=true
