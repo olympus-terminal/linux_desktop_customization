@@ -101,8 +101,8 @@ cat configs/vscode-extensions.txt | xargs -L1 code --install-extension
 ### Prerequisites
 
 - Ubuntu 22.04+ or any GNOME 42-46 distro on X11 (Wayland partial — see Compatibility)
-- Install required packages and extensions (see Dependencies above)
-- VS Code (optional — skip Section 5 if not using it)
+- VS Code (optional — skip if not using it)
+- `restore.sh` now installs required packages, extensions, and coding fonts automatically
 
 ### Automated Install
 
@@ -120,6 +120,9 @@ Then log out and back in, or restart GNOME Shell: `killall -HUP gnome-shell`
 
 | Step | Action | Files touched |
 |------|--------|---------------|
+| 0a | Install system dependencies (apt) | `gnome-terminal`, `nemo`, `wmctrl`, `xdotool`, `x11-utils`, `xbindkeys` |
+| 0b | Install + enable GNOME Shell extensions | `ding`, `tiling-assistant`, `ubuntu-appindicators`, `ubuntu-dock` |
+| 0c | Install coding fonts (apt) | `fonts-jetbrains-mono`, `fonts-firacode`, `fonts-cascadia-code`, `fonts-hack` |
 | 1 | GTK3 dark-glass CSS | `~/.config/gtk-3.0/gtk.css` |
 | 2 | VS Code settings + extensions | `~/.config/Code/User/settings.json` |
 | 3 | Nemo glass wrapper script | `~/.local/bin/nemo-glass` |
@@ -129,6 +132,9 @@ Then log out and back in, or restart GNOME Shell: `killall -HUP gnome-shell`
 | 7 | dconf databases (terminal, theme, Nemo, WM, extensions, background) | dconf user database |
 | 8 | Wallpaper images (11 PNGs, ~119 MB) | `~/Documents/desktops/MJ7-Topaz/light-processed-dark20/` |
 | 9 | System no-suspend override (needs sudo) | `/etc/dconf/db/local.d/00-no-suspend` |
+| 10 | Custom dark-glass icons | `~/.local/share/icons/` |
+| 11 | Wallpaper processing tools | `~/Documents/desktops/*.py`, `*.sh` |
+| 12 | Start xbindkeys | background process |
 
 ### Manual / Selective Install
 
@@ -366,8 +372,25 @@ linux_desktop_customization/
     gnome-extensions.dconf               # GNOME Shell extension settings
     nemo.dconf                           # Nemo file manager preferences
     00-no-suspend                        # system dconf override (disable sleep/screensaver)
+  fonts/
+    install_coding_fonts_linux.sh        # installs JetBrains Mono, Fira Code, etc.
   wallpapers/                            # 11 dark sci-fi cityscape PNGs (~119 MB total)
     *.png
+  wallpaper-tools/                       # pipeline for sourcing/processing new wallpapers
+    wallpaper_scraper.py                 # scrape wallpaper sources
+    targeted_scraper.py                  # targeted scraping for specific styles
+    analyze_wallpapers.py                # analyze image properties
+    preview_and_filter.py                # preview and select candidates
+    darken_wallpapers.py                 # darken images to match theme
+    process_topaz_light.py               # Topaz lighting post-processing
+    reduce_brightness.sh                 # brightness reduction pass
+    workspace-wallpapers.sh              # original wallpaper daemon (legacy)
+    workspace-wallpaper-switcher.sh      # alternate switcher variant
+    debug-workspace.sh                   # daemon debugging helper
+    test-workspace.sh                    # daemon test harness
+  icons/
+    install-icons.sh                     # dark-glass icon installer
+    MIDJOURNEY-PROMPTS.md                # prompts used to generate the icons
 ```
 
 ## For AI Agents Implementing This

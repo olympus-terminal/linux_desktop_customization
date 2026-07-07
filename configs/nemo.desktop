@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Files
+Comment=Access and organize files (dark glass)
+Exec=/home/drn2/.local/bin/nemo-glass %F
+Icon=nemo-glass
+Terminal=false
+Type=Application
+Categories=GNOME;GTK;Utility;Core;FileManager;
+MimeType=inode/directory;application/x-gnome-saved-search;
+StartupNotify=true
+StartupWMClass=Nemo
