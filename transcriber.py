@@ -5,7 +5,8 @@ Handles real-time speech-to-text via Mistral API.
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator, Optional, Callable
+import argparse
+from typing import AsyncIterator, Optional, Callable, Sequence
 from dataclasses import dataclass
 
 try:
@@ -238,14 +239,14 @@ def create_transcriber(
 
     return VoxtralTranscriber(api_key=api_key, **kwargs)
 
-async def test_transcriber():
-    """Test transcriber with mock or real API."""
+async def test_transcriber(use_mock: bool = False):
+    """Exercise the transcriber; mock output requires explicit opt-in."""
     import os
 
     print("=== Transcriber Test ===\n")
 
     api_key = os.environ.get("MISTRAL_API_KEY", "")
-    transcriber = create_transcriber(api_key=api_key, use_mock=not api_key)
+    transcriber = create_transcriber(api_key=api_key, use_mock=use_mock)
 
     # Simulate audio stream
     async def fake_audio():
@@ -261,5 +262,19 @@ async def test_transcriber():
 
     print("\nTest complete!")
 
+def standalone_main(argv: Optional[Sequence[str]] = None) -> None:
+    """Run the standalone transcriber check with explicit mock selection."""
+    parser = argparse.ArgumentParser(
+        description="Exercise the Voxtral transcriber with a simulated audio stream."
+    )
+    parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="TEST ONLY: emit placeholder mock text; no transcription is performed",
+    )
+    args = parser.parse_args(argv)
+    asyncio.run(test_transcriber(use_mock=args.mock))
+
+
 if __name__ == "__main__":
-    asyncio.run(test_transcriber())
+    standalone_main()

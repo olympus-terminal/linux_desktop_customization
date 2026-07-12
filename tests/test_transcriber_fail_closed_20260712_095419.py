@@ -7,6 +7,7 @@ produce transcription data.
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import io
 import os
@@ -16,7 +17,7 @@ import unittest
 from contextlib import redirect_stdout
 from enum import Enum
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +52,30 @@ class FailClosedFactoryTests(unittest.TestCase):
             with patch.dict(os.environ, {}, clear=True):
                 with self.assertRaisesRegex(ValueError, "MISTRAL_API_KEY"):
                     transcriber.create_transcriber(api_key=None, use_mock=False)
+
+
+class StandaloneMockSelectionTests(unittest.TestCase):
+    def test_missing_key_does_not_enable_mock_in_standalone_check(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with patch.object(
+                transcriber,
+                "create_transcriber",
+                side_effect=RuntimeError("normal backend unavailable"),
+            ) as factory:
+                with self.assertRaisesRegex(RuntimeError, "normal backend unavailable"):
+                    asyncio.run(transcriber.test_transcriber())
+
+        factory.assert_called_once_with(api_key="", use_mock=False)
+
+    def test_standalone_mock_flag_is_explicit(self) -> None:
+        with patch.object(
+            transcriber,
+            "test_transcriber",
+            new_callable=AsyncMock,
+        ) as runner:
+            transcriber.standalone_main(["--mock"])
+
+        runner.assert_awaited_once_with(use_mock=True)
 
 
 class OutputMode(Enum):
