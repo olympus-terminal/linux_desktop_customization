@@ -2,6 +2,8 @@
 Voxtral transcription module.
 Handles real-time speech-to-text via Mistral API.
 """
+from __future__ import annotations
+
 import asyncio
 from typing import AsyncIterator, Optional, Callable
 from dataclasses import dataclass
@@ -12,7 +14,6 @@ try:
     MISTRAL_AVAILABLE = True
 except ImportError:
     MISTRAL_AVAILABLE = False
-    print("Mistral AI client not installed. Run: pip install 'mistralai[realtime]'")
 
 @dataclass
 class TranscriptionResult:
@@ -153,7 +154,7 @@ class VoxtralTranscriber:
 
 class MockTranscriber:
     """
-    Mock transcriber for testing without API.
+    Explicit test-only mock transcriber for testing without API.
     Simulates transcription with placeholder text.
     """
 
@@ -203,23 +204,37 @@ def create_transcriber(
 
     Args:
         api_key: Mistral API key
-        use_mock: If True, use mock transcriber for testing
+        use_mock: If True, explicitly use placeholder mock output for testing
         **kwargs: Additional arguments for VoxtralTranscriber
 
     Returns:
         Transcriber instance
+
+    Raises:
+        RuntimeError: If the Mistral client is unavailable in normal mode
+        ValueError: If no API key is available in normal mode
     """
-    if use_mock or not MISTRAL_AVAILABLE:
-        print("Using mock transcriber")
+    if use_mock:
+        print(
+            "TEST/MOCK MODE: placeholder text only; this is not transcription "
+            "and audio is not transcribed."
+        )
         return MockTranscriber()
+
+    if not MISTRAL_AVAILABLE:
+        raise RuntimeError(
+            "mistralai package not installed; install 'mistralai[realtime]' "
+            "or pass use_mock=True only for explicit test/mock mode"
+        )
 
     if not api_key:
         import os
         api_key = os.environ.get("MISTRAL_API_KEY", "")
 
     if not api_key:
-        print("No API key provided, using mock transcriber")
-        return MockTranscriber()
+        raise ValueError(
+            "MISTRAL_API_KEY is required unless use_mock=True is explicitly set"
+        )
 
     return VoxtralTranscriber(api_key=api_key, **kwargs)
 

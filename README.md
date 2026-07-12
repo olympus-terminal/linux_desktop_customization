@@ -44,6 +44,27 @@ sudo apt install ffmpeg xdotool portaudio19-dev
 
 ## Usage
 
+### Voxtral API and Explicit Mock Mode
+
+`run.sh` uses the Voxtral API by default. Install the optional
+`mistralai[realtime]` client and set `MISTRAL_API_KEY` before starting it:
+
+```bash
+./run.sh
+```
+
+API mode fails closed: a missing client raises an error, and a missing API key
+is rejected. It never substitutes placeholder output. The mock must be selected
+explicitly and is only for testing application flow:
+
+```bash
+./run.sh --mock  # TEST/MOCK MODE: placeholder text; audio is not transcribed
+```
+
+Launchers do not force a machine-specific `LD_PRELOAD` path. If the hands-free
+launcher should select a device by default, set `SOTTO_AUDIO_DEVICE`; otherwise
+use its `--device` option.
+
 ### Terminal Mode
 
 Prints transcribed text to the terminal (no xdotool needed):

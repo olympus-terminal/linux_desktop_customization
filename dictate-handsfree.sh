@@ -10,13 +10,12 @@
 #   ./dictate-handsfree.sh --list-devices     # Show available microphones
 #   ./dictate-handsfree.sh --test-vad         # Test voice detection only
 
+set -euo pipefail
 cd "$(dirname "$0")"
 
-# Use system libstdc++ to avoid GLIBCXX version conflicts
-export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+device_args=()
+if [[ -n "${SOTTO_AUDIO_DEVICE:-}" ]]; then
+    device_args=(--device "$SOTTO_AUDIO_DEVICE")
+fi
 
-# Default microphone - change this to match your setup, or use -d flag
-# Run ./dictate-handsfree.sh --list-devices to see available mics
-DEFAULT_DEVICE="RØDE NT-USB+"
-
-exec python hands_free.py --device "$DEFAULT_DEVICE" "$@"
+exec python3 hands_free.py "${device_args[@]}" "$@"

@@ -392,7 +392,7 @@ def main():
     parser.add_argument(
         "--mock",
         action="store_true",
-        help="Use mock transcriber (for testing without API)"
+        help="TEST ONLY: emit placeholder mock text; audio is not transcribed"
     )
     parser.add_argument(
         "--local", "-l",
@@ -444,6 +444,9 @@ def main():
     if args.local:
         print("  Voice Dictation (Local)")
         print(f"  Using faster-whisper {args.model}")
+    elif args.mock:
+        print("  Voice Dictation (TEST/MOCK MODE)")
+        print("  Placeholder text only; microphone audio is not transcribed")
     else:
         print("  Voxtral Dictation")
         print("  Real-time voice-to-text with Mistral AI")

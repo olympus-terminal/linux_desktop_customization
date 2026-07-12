@@ -209,7 +209,7 @@ class VoiceActivityDetector:
     def is_speaking(self) -> bool:
         return self._state in (VADState.SPEAKING, VADState.TRAILING)
 
-def test_vad():
+def test_vad(device_name: Optional[str] = None):
     """Test VAD with microphone input."""
     import sys
     sys.path.insert(0, '.')
@@ -220,7 +220,7 @@ def test_vad():
     print("Press Ctrl+C to stop.\n")
 
     vad = VoiceActivityDetector()
-    capture = AudioCapture(device_name="RØDE NT-USB+")
+    capture = AudioCapture(device_name=device_name)
 
     utterance_count = 0
 
@@ -260,5 +260,5 @@ def test_vad():
 
 if __name__ == "__main__":
     import os
-    os.environ["LD_PRELOAD"] = "/usr/lib/x86_64-linux-gnu/libstdc++.so.6"
-    test_vad()
+
+    test_vad(device_name=os.environ.get("SOTTO_AUDIO_DEVICE"))
