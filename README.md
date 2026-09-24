@@ -32,7 +32,7 @@ A complete, portable desktop theme where every application layer is transparent 
 ### Required Packages
 
 ```bash
-sudo apt install gnome-shell gnome-terminal nemo wmctrl xdotool x11-utils xbindkeys
+sudo apt install gnome-shell gnome-terminal nemo wmctrl xdotool x11-utils
 ```
 
 | Package | Version | Purpose |
@@ -42,7 +42,6 @@ sudo apt install gnome-shell gnome-terminal nemo wmctrl xdotool x11-utils xbindk
 | `wmctrl` | 1.07 | Workspace detection for wallpaper daemon |
 | `xdotool` | 3.20160805.1 | Window search for nemo-glass opacity wrapper |
 | `x11-utils` | 7.7+6 | Provides `xprop` for setting window opacity |
-| `xbindkeys` | 1.8.7 | Custom keybinding (Ctrl+Space -> terminal) |
 
 ### GNOME Shell Extensions
 
@@ -121,7 +120,7 @@ Then log out and back in, or restart GNOME Shell: `killall -HUP gnome-shell`
 
 | Step | Action | Files touched |
 |------|--------|---------------|
-| 0a | Install system dependencies (apt) | `gnome-terminal`, `nemo`, `wmctrl`, `xdotool`, `x11-utils`, `xbindkeys` |
+| 0a | Install system dependencies (apt) | `gnome-terminal`, `nemo`, `wmctrl`, `xdotool`, `x11-utils` |
 | 0b | Install + enable GNOME Shell extensions | `ding`, `tiling-assistant`, `ubuntu-appindicators`, `ubuntu-dock` |
 | 0c | Install coding fonts (apt) | `fonts-jetbrains-mono`, `fonts-firacode`, `fonts-cascadia-code`, `fonts-hack` |
 | 1 | GTK3 dark-glass CSS | `~/.config/gtk-3.0/gtk.css` |
@@ -129,13 +128,13 @@ Then log out and back in, or restart GNOME Shell: `killall -HUP gnome-shell`
 | 3 | Nemo glass wrapper script | `~/.local/bin/nemo-glass` |
 | 4 | Wallpaper switching daemon | `~/Documents/desktops/workspace-wallpapers-fast.sh` |
 | 5 | Autostart for wallpaper daemon | `~/.config/autostart/workspace-wallpapers.desktop` |
-| 6 | Ctrl+Space keybinding, window tiler script | `~/.xbindkeysrc`, `~/.local/bin/gnome-window-tiler` |
+| 6 | Shortcut prerequisites: conda `gsettings` fix, window tiler script | `~/.bashrc`, `~/.profile`, `~/.local/bin/gnome-window-tiler` |
 | 7 | dconf databases (terminal, theme, Nemo, WM, extensions, background, keybindings) | dconf user database |
 | 8 | Wallpaper images (11 PNGs, ~119 MB) | `~/Documents/desktops/MJ7-Topaz/light-processed-dark20/` |
 | 9 | System no-suspend override (needs sudo) | `/etc/dconf/db/local.d/00-no-suspend` |
 | 10 | Custom dark-glass icons | `~/.local/share/icons/` |
 | 11 | Wallpaper processing tools | `~/Documents/desktops/*.py`, `*.sh` |
-| 12 | Start xbindkeys | background process |
+| 12 | Check shortcuts (`check-hotkeys.sh`) | none |
 
 ### Manual / Selective Install
 
@@ -175,7 +174,7 @@ cp configs/workspace-wallpapers.desktop ~/.config/autostart/
 
 ## Keyboard Shortcuts
 
-Stored in `configs/gnome-keybindings.dconf` (GNOME) and `configs/xbindkeysrc` (xbindkeys).
+All shortcuts are GNOME settings stored in `configs/gnome-keybindings.dconf`. No extra daemon is involved.
 
 | Keys | Action | Source |
 |------|--------|--------|
@@ -183,13 +182,38 @@ Stored in `configs/gnome-keybindings.dconf` (GNOME) and `configs/xbindkeysrc` (x
 | Ctrl+Shift+← / → | Previous / next workspace | `wm/keybindings` |
 | Ctrl+Shift+Alt+← / → / ↑ / ↓ | Move window to adjacent workspace | `wm/keybindings` |
 | Super+Shift+PgUp / PgDn | Move window to adjacent workspace | `wm/keybindings` |
-| Ctrl+Space | Open GNOME Terminal | xbindkeys |
+| Ctrl+Space | Open GNOME Terminal | custom keybinding `spotlight-term` |
 | Super+T | Cycle window tiling (full, halves, quarters) | custom keybinding → `gnome-window-tiler` |
 | Ctrl+Shift+4 | Screenshot | `shell/keybindings` |
 | Ctrl+Alt+4 | Screenshot UI | `shell/keybindings` |
 | Ctrl+Alt+5 | Window screenshot | `shell/keybindings` |
 
 Super+Up/Down/Left/Right tiling comes from the Tiling Assistant extension, which is why the native `maximize`, `unmaximize` and `toggle-tiled-*` bindings are empty. Super+L lock is unbound on purpose (it triggers the NVIDIA VT-switch freeze). Ctrl+5…0 need the fixed 11 workspaces (`dynamic-workspaces=false`), also set in this file.
+
+### Check shortcuts after every update
+
+```bash
+./check-hotkeys.sh        # report: gsettings backend, drift from the saved file, tiler script
+./check-hotkeys.sh --fix  # reload the saved shortcuts if any drifted
+```
+
+### Why shortcuts seemed to vanish after updates
+
+System updates did not reset these shortcuts. Every snapshot of the settings database (Nov 2025, Sep 2026) held the same bindings. The real cause was a conda trap:
+
+- `~/miniconda3/bin/gsettings` comes first on `PATH`. Conda's GLib has no dconf module, so that `gsettings` falls back to a private keyfile (`~/.config/glib-2.0/settings/keyfile`) that GNOME never reads.
+- Reading from it returns GNOME's *defaults*, so shortcuts look "wiped" (for example, screenshots back on the Print key, which a compact keyboard doesn't have).
+- Writing to it reports success but changes nothing on the desktop. AI agents and setup scripts that ran `gsettings set` from a conda shell "fixed" shortcuts that never took effect, then blamed the update. One such repair also disabled xbindkeys, which really did remove Ctrl+Space.
+
+The fix is one line in `~/.bashrc` and `~/.profile` (restore.sh adds it):
+
+```bash
+export GIO_EXTRA_MODULES=/usr/lib/x86_64-linux-gnu/gio/modules
+```
+
+It lets conda's `gsettings` (in base and every env) load the system dconf module. `check-hotkeys.sh` warns if the trap comes back or if the orphaned keyfile exists.
+
+### Saving shortcut changes
 
 To capture changes after editing shortcuts in Settings, re-dump the four paths (`org/gnome/desktop/wm/keybindings`, `org/gnome/mutter/keybindings`, `org/gnome/shell/keybindings`, `org/gnome/settings-daemon/plugins/media-keys`) into `configs/gnome-keybindings.dconf`, replacing your home path with `@HOME@`.
 
@@ -283,7 +307,6 @@ Token colors: green strings (`#85ff85`), cyan keywords (`#55ffff`), signature gr
 
 - **nemo-glass**: The `xprop`-based opacity wrapper requires X11. On Wayland, Nemo will render with the dark CSS but without transparency. A Wayland alternative would need a compositor-specific opacity rule (e.g. Mutter window rules or Sway/Hyprland `opacity` directives).
 - **Wallpaper daemon**: `wmctrl` requires X11. On Wayland, replace with `gdbus` workspace monitoring.
-- **xbindkeys**: X11 only. On Wayland, use GNOME custom keyboard shortcuts via `gsettings` or Settings > Keyboard.
 
 ### Adapting for Other Distros
 
@@ -324,9 +347,9 @@ Drop images into the wallpaper directory. The daemon assigns them to workspaces 
 
 ## Troubleshooting
 
-### Ctrl+Space does nothing after reboot
+### A shortcut stopped working, or an agent says it set one but nothing changed
 
-xbindkeys starts from `/etc/xdg/autostart/xbindkeys.desktop`. A user entry at `~/.config/autostart/xbindkeys.desktop` containing `Hidden=true` masks it, and xbindkeys never starts. Delete that file (restore.sh does this) and run `xbindkeys`.
+Run `./check-hotkeys.sh`. If it reports that `gsettings` does not see the real settings, open a new terminal (or add the `GIO_EXTRA_MODULES` line above) and try again. If it reports drift, run `./check-hotkeys.sh --fix`. See [Why shortcuts seemed to vanish after updates](#why-shortcuts-seemed-to-vanish-after-updates).
 
 ### Desktop freezes when switching workspaces quickly
 
@@ -395,9 +418,9 @@ linux_desktop_customization/
     nemo-glass                           # Nemo transparency wrapper script
     workspace-wallpapers-fast.sh         # per-workspace wallpaper daemon
     workspace-wallpapers.desktop         # XDG autostart for wallpaper daemon
-    xbindkeysrc                          # Ctrl+Space -> gnome-terminal
     gnome-keybindings.dconf              # workspace/window/screenshot shortcuts, Super+T tiler
     gnome-window-tiler                   # Super+T window tiling script
+  check-hotkeys.sh                       # verify shortcuts after updates (--fix reloads them)
     gnome-terminal.dconf                 # terminal profile (colors, transparency, size)
     gnome-desktop-interface.dconf        # system theme, fonts, color scheme
     gnome-desktop-background.dconf       # wallpaper settings
@@ -452,3 +475,5 @@ If you are a Claude or other AI agent helping a user install this theme:
 9. **If wallpaper goes black after applying CSS**: This is the DING conflict. Fix the CSS `:not(.desktopwindow)` exclusion, then restart GNOME Shell with `killall -HUP gnome-shell`.
 
 10. **The restore script is idempotent**: Running it multiple times is safe. It overwrites configs but doesn't accumulate state.
+
+11. **Never trust `gsettings` from a conda shell**: Check `command -v gsettings`. If it is under a conda prefix and `GIO_EXTRA_MODULES` is unset, its reads return defaults and its writes go nowhere. Use `dconf read`/`dconf write`, or `/usr/bin/gsettings`, and confirm every change with `dconf read`. Run `./check-hotkeys.sh` before and after touching shortcuts, and never conclude "the update reset the shortcuts" without comparing `dconf dump` output.

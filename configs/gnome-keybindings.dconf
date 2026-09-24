@@ -32,13 +32,18 @@ screenshot-window=['<Control><Alt>5']
 show-screenshot-ui=['<Control><Alt>4']
 
 [org/gnome/settings-daemon/plugins/media-keys]
-custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom-window-tiler/']
+custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom-window-tiler/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/spotlight-term/']
 screensaver=@as []
 
 [org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom-window-tiler]
 binding='<Super>t'
 command='@HOME@/.local/bin/gnome-window-tiler'
 name='Window Tiler'
+
+[org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/spotlight-term]
+binding='<Control>space'
+command='gnome-terminal'
+name='Spotlight Terminal'
 
 [org/gnome/mutter]
 dynamic-workspaces=false

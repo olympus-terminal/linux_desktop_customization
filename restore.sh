@@ -24,7 +24,7 @@ echo ""
 
 # 0a. System dependencies
 echo "[0a/12] System dependencies..."
-REQUIRED_PKGS=(gnome-terminal nemo wmctrl xdotool x11-utils xbindkeys)
+REQUIRED_PKGS=(gnome-terminal nemo wmctrl xdotool x11-utils)
 MISSING_PKGS=()
 for pkg in "${REQUIRED_PKGS[@]}"; do
     if ! dpkg -s "$pkg" &>/dev/null; then
@@ -109,14 +109,23 @@ echo "[5/12] Autostart entry..."
 run mkdir -p ~/.config/autostart
 run cp "$CONFIGS/workspace-wallpapers.desktop" ~/.config/autostart/workspace-wallpapers.desktop
 
-# 6. Keybindings: Ctrl+Space -> gnome-terminal (xbindkeys), Super+T tiler
-echo "[6/12] Keybindings (xbindkeys, window tiler)..."
-run cp "$CONFIGS/xbindkeysrc" ~/.xbindkeysrc
-# A user autostart entry with Hidden=true masks /etc/xdg/autostart/xbindkeys.desktop,
-# so xbindkeys silently stops starting at login
-if grep -qs '^Hidden=true' ~/.config/autostart/xbindkeys.desktop; then
-    run rm ~/.config/autostart/xbindkeys.desktop
-    echo "       Removed autostart override that disabled xbindkeys"
+# 6. Shortcut plumbing: gsettings fix for conda, Super+T tiler script
+#    (the shortcuts themselves are loaded with the dconf settings in step 7)
+echo "[6/12] Shortcut prerequisites..."
+# Conda's GLib has no dconf module; without this, any `gsettings set` run from a
+# conda shell writes to ~/.config/glib-2.0/settings/keyfile and GNOME never sees it
+GIO_LINE='export GIO_EXTRA_MODULES=/usr/lib/x86_64-linux-gnu/gio/modules'
+for rc in ~/.bashrc ~/.profile; do
+    if [ -f "$rc" ] && ! grep -qs 'GIO_EXTRA_MODULES' "$rc"; then
+        if $DRY_RUN; then echo "[dry-run] append GIO_EXTRA_MODULES to $rc"; else printf '\n%s\n' "$GIO_LINE" >> "$rc"; fi
+        echo "       Added GIO_EXTRA_MODULES to $rc"
+    fi
+done
+# Ctrl+Space is a GNOME shortcut now; an old xbindkeys binding would fight it
+if grep -qsiE 'control *\+ *space' ~/.xbindkeysrc; then
+    run pkill -x xbindkeys || true
+    run mv ~/.xbindkeysrc ~/.xbindkeysrc.bak
+    echo "       Retired xbindkeys Ctrl+Space binding (~/.xbindkeysrc.bak)"
 fi
 run mkdir -p ~/.local/bin
 run cp "$CONFIGS/gnome-window-tiler" ~/.local/bin/gnome-window-tiler
@@ -185,13 +194,10 @@ else
     echo "       wallpaper-tools/ directory not found — skipping"
 fi
 
-# 12. Start services
-echo "[12/12] Starting services..."
-if ! pgrep -x xbindkeys &>/dev/null; then
-    run xbindkeys &
-    echo "       Started xbindkeys"
-else
-    echo "       xbindkeys already running"
+# 12. Verify shortcuts
+echo "[12/12] Checking shortcuts..."
+if ! $DRY_RUN; then
+    GIO_EXTRA_MODULES=/usr/lib/x86_64-linux-gnu/gio/modules "$SCRIPT_DIR/check-hotkeys.sh" || true
 fi
 
 echo ""
