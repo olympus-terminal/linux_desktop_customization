@@ -347,6 +347,10 @@ Drop images into the wallpaper directory. The daemon assigns them to workspaces 
 
 ## Troubleshooting
 
+### Alt shortcuts do the wrong thing (Ctrl+Alt+4 opens a terminal, windows won't move)
+
+The external keyboard is in Mac mode, where the key labeled Alt sends Super. Ctrl+Alt+4 then arrives as Ctrl+Super+4 (Ubuntu dock: new window of the 4th dock app, Terminal), and Ctrl+Shift+Alt+arrows arrive as Ctrl+Shift+Super+arrows, which are unbound. The mode is stored in the keyboard, so it follows the keyboard between machines (it happened after the AK820 was used on a Jetson). Switch the keyboard back to Windows mode. To confirm, run `xinput test <keyboard id>` (ids from `xinput list`) and press left Alt: keycode 64 is Alt, 133 is Super.
+
 ### A shortcut stopped working, or an agent says it set one but nothing changed
 
 Run `./check-hotkeys.sh`. If it reports that `gsettings` does not see the real settings, open a new terminal (or add the `GIO_EXTRA_MODULES` line above) and try again. If it reports drift, run `./check-hotkeys.sh --fix`. See [Why shortcuts seemed to vanish after updates](#why-shortcuts-seemed-to-vanish-after-updates).
