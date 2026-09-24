@@ -10,6 +10,7 @@ A complete, portable desktop theme where every application layer is transparent 
 - **File manager** — Nemo with true-black surfaces at 82% compositor opacity, wallpaper visible through every window
 - **Code editor** — VS Code with vibrancy + glass extensions, alpha-channel backgrounds on all surfaces
 - **Wallpapers** — 11 dark sci-fi cityscapes (Midjourney v7 + Topaz upscale), one per workspace, auto-switching daemon
+- **Hotkeys** — Ctrl+1…0 jump to workspaces 1–10, Ctrl+Space opens a terminal, Super+T tiles windows (full table below)
 - **System** — Yaru-dark theme, `prefer-dark` color scheme, consistent green accent (`#96d5a2`) throughout
 
 ## Dependencies
@@ -128,8 +129,8 @@ Then log out and back in, or restart GNOME Shell: `killall -HUP gnome-shell`
 | 3 | Nemo glass wrapper script | `~/.local/bin/nemo-glass` |
 | 4 | Wallpaper switching daemon | `~/Documents/desktops/workspace-wallpapers-fast.sh` |
 | 5 | Autostart for wallpaper daemon | `~/.config/autostart/workspace-wallpapers.desktop` |
-| 6 | Ctrl+Space keybinding | `~/.xbindkeysrc` |
-| 7 | dconf databases (terminal, theme, Nemo, WM, extensions, background) | dconf user database |
+| 6 | Ctrl+Space keybinding, window tiler script | `~/.xbindkeysrc`, `~/.local/bin/gnome-window-tiler` |
+| 7 | dconf databases (terminal, theme, Nemo, WM, extensions, background, keybindings) | dconf user database |
 | 8 | Wallpaper images (11 PNGs, ~119 MB) | `~/Documents/desktops/MJ7-Topaz/light-processed-dark20/` |
 | 9 | System no-suspend override (needs sudo) | `/etc/dconf/db/local.d/00-no-suspend` |
 | 10 | Custom dark-glass icons | `~/.local/share/icons/` |
@@ -169,6 +170,28 @@ chmod +x ~/Documents/desktops/workspace-wallpapers-fast.sh
 cp configs/workspace-wallpapers.desktop ~/.config/autostart/
 # Test: ~/Documents/desktops/workspace-wallpapers-fast.sh --test
 ```
+
+---
+
+## Keyboard Shortcuts
+
+Stored in `configs/gnome-keybindings.dconf` (GNOME) and `configs/xbindkeysrc` (xbindkeys).
+
+| Keys | Action | Source |
+|------|--------|--------|
+| Ctrl+1 … Ctrl+9, Ctrl+0 | Switch to workspace 1–9, 10 | `wm/keybindings` |
+| Ctrl+Shift+← / → | Previous / next workspace | `wm/keybindings` |
+| Ctrl+Shift+Alt+← / → / ↑ / ↓ | Move window to adjacent workspace | `wm/keybindings` |
+| Super+Shift+PgUp / PgDn | Move window to adjacent workspace | `wm/keybindings` |
+| Ctrl+Space | Open GNOME Terminal | xbindkeys |
+| Super+T | Cycle window tiling (full, halves, quarters) | custom keybinding → `gnome-window-tiler` |
+| Ctrl+Shift+4 | Screenshot | `shell/keybindings` |
+| Ctrl+Alt+4 | Screenshot UI | `shell/keybindings` |
+| Ctrl+Alt+5 | Window screenshot | `shell/keybindings` |
+
+Super+Up/Down/Left/Right tiling comes from the Tiling Assistant extension, which is why the native `maximize`, `unmaximize` and `toggle-tiled-*` bindings are empty. Super+L lock is unbound on purpose (it triggers the NVIDIA VT-switch freeze). Ctrl+5…0 need the fixed 11 workspaces (`dynamic-workspaces=false`), also set in this file.
+
+To capture changes after editing shortcuts in Settings, re-dump the four paths (`org/gnome/desktop/wm/keybindings`, `org/gnome/mutter/keybindings`, `org/gnome/shell/keybindings`, `org/gnome/settings-daemon/plugins/media-keys`) into `configs/gnome-keybindings.dconf`, replacing your home path with `@HOME@`.
 
 ---
 
@@ -301,6 +324,14 @@ Drop images into the wallpaper directory. The daemon assigns them to workspaces 
 
 ## Troubleshooting
 
+### Ctrl+Space does nothing after reboot
+
+xbindkeys starts from `/etc/xdg/autostart/xbindkeys.desktop`. A user entry at `~/.config/autostart/xbindkeys.desktop` containing `Hidden=true` masks it, and xbindkeys never starts. Delete that file (restore.sh does this) and run `xbindkeys`.
+
+### Desktop freezes when switching workspaces quickly
+
+Older versions of `workspace-wallpapers-fast.sh` polled every 50 ms and set the wallpaper from background jobs, piling full-size PNG reloads onto GNOME Shell. The current version is event-driven, debounced, and uses screen-sized cached copies. Reinstall it from `configs/` and restart the daemon.
+
 ### Black desktop — wallpaper is invisible
 
 **Symptom**: Desktop is solid black. Wallpaper briefly flashes when GNOME Shell restarts but goes black again.
@@ -365,6 +396,8 @@ linux_desktop_customization/
     workspace-wallpapers-fast.sh         # per-workspace wallpaper daemon
     workspace-wallpapers.desktop         # XDG autostart for wallpaper daemon
     xbindkeysrc                          # Ctrl+Space -> gnome-terminal
+    gnome-keybindings.dconf              # workspace/window/screenshot shortcuts, Super+T tiler
+    gnome-window-tiler                   # Super+T window tiling script
     gnome-terminal.dconf                 # terminal profile (colors, transparency, size)
     gnome-desktop-interface.dconf        # system theme, fonts, color scheme
     gnome-desktop-background.dconf       # wallpaper settings

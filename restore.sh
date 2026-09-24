@@ -109,9 +109,18 @@ echo "[5/12] Autostart entry..."
 run mkdir -p ~/.config/autostart
 run cp "$CONFIGS/workspace-wallpapers.desktop" ~/.config/autostart/workspace-wallpapers.desktop
 
-# 6. Keybinding (Ctrl+Space -> gnome-terminal)
-echo "[6/12] xbindkeys config..."
+# 6. Keybindings: Ctrl+Space -> gnome-terminal (xbindkeys), Super+T tiler
+echo "[6/12] Keybindings (xbindkeys, window tiler)..."
 run cp "$CONFIGS/xbindkeysrc" ~/.xbindkeysrc
+# A user autostart entry with Hidden=true masks /etc/xdg/autostart/xbindkeys.desktop,
+# so xbindkeys silently stops starting at login
+if grep -qs '^Hidden=true' ~/.config/autostart/xbindkeys.desktop; then
+    run rm ~/.config/autostart/xbindkeys.desktop
+    echo "       Removed autostart override that disabled xbindkeys"
+fi
+run mkdir -p ~/.local/bin
+run cp "$CONFIGS/gnome-window-tiler" ~/.local/bin/gnome-window-tiler
+run chmod +x ~/.local/bin/gnome-window-tiler
 
 # 7. dconf settings
 echo "[7/12] dconf settings..."
@@ -122,8 +131,10 @@ if ! $DRY_RUN; then
     dconf load /org/nemo/ < "$CONFIGS/nemo.dconf"
     dconf load /org/gnome/shell/extensions/ < "$CONFIGS/gnome-extensions.dconf"
     dconf load /org/gnome/desktop/wm/preferences/ < "$CONFIGS/gnome-wm.dconf"
+    # Workspace/window/screenshot shortcuts and fixed workspaces (needed for Ctrl+5..0)
+    sed "s#@HOME@#$HOME#g" "$CONFIGS/gnome-keybindings.dconf" | dconf load /
 else
-    echo "[dry-run] dconf load (6 databases)"
+    echo "[dry-run] dconf load (7 databases)"
 fi
 
 # 8. Wallpaper images

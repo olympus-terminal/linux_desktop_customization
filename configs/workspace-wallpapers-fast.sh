@@ -56,11 +56,43 @@ populate_wallpapers() {
     echo "Found $index wallpaper(s) in '$image_dir'"
 }
 
-# Fast wallpaper setter — gsettings so GNOME Shell picks up the change
+# Downscale wallpapers to the screen size once, cached. GNOME Shell decodes the
+# wallpaper on its main thread, so a 6513x1832 PNG on every switch stalls it.
+SCALED_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/workspace-wallpapers"
+
+scale_wallpapers() {
+    local screen
+    screen=$(xprop -root _NET_DESKTOP_GEOMETRY 2>/dev/null | sed -n 's/.*= \([0-9]*\), \([0-9]*\)/\1x\2/p')
+    [ -z "$screen" ] && return
+    mkdir -p "$SCALED_DIR"
+
+    local i src dst
+    for i in "${!WALLPAPERS[@]}"; do
+        src="${WALLPAPERS[$i]#file://}"
+        dst="$SCALED_DIR/${screen}-$(basename "${src%.*}").jpg"
+        if [ ! -f "$dst" ] || [ "$src" -nt "$dst" ]; then
+            python3 - "$src" "$dst" "$screen" <<'PY' || continue
+import sys
+from PIL import Image
+src, dst, screen = sys.argv[1:]
+w, h = map(int, screen.split("x"))
+im = Image.open(src).convert("RGB")
+scale = max(w / im.width, h / im.height)
+if scale < 1:
+    im = im.resize((round(im.width * scale), round(im.height * scale)), Image.LANCZOS)
+im.save(dst, quality=95, subsampling=0)
+PY
+        fi
+        WALLPAPERS[$i]="file://$dst"
+    done
+    echo "Using wallpapers scaled to $screen in $SCALED_DIR"
+}
+
+# Set both keys in one dconf transaction so the shell reloads the background once
 set_wallpaper_fast() {
     local wallpaper="$1"
-    gsettings set org.gnome.desktop.background picture-uri "$wallpaper"
-    gsettings set org.gnome.desktop.background picture-uri-dark "$wallpaper"
+    printf "[org/gnome/desktop/background]\npicture-uri='%s'\npicture-uri-dark='%s'\n" \
+        "$wallpaper" "$wallpaper" | dconf load /
 
     local filename=$(basename "$wallpaper")
     filename="${filename%.jpg}"
@@ -74,91 +106,45 @@ get_workspace_fast() {
     wmctrl -d 2>/dev/null | grep '\*' | cut -d' ' -f1
 }
 
-# Monitor workspace changes using optimized polling
-monitor_workspace_changes() {
-    echo "🚀 Fast Workspace Wallpaper Daemon Started"
-    echo "⚡ Using optimized polling for reliable switching"
-    echo "   Press Ctrl+C to stop"
-    echo ""
-
-    LAST_WORKSPACE=$(get_workspace_fast)
-
-    # Set initial wallpaper
-    if [ -n "${WALLPAPERS[$LAST_WORKSPACE]}" ]; then
-        set_wallpaper_fast "${WALLPAPERS[$LAST_WORKSPACE]}"
+apply_workspace() {
+    local ws="$1"
+    [[ "$ws" =~ ^[0-9]+$ ]] || return
+    if [ -n "${WALLPAPERS[$ws]}" ]; then
+        set_wallpaper_fast "${WALLPAPERS[$ws]}"
+    else
+        echo "ℹ No wallpaper configured for Workspace $((ws + 1))"
     fi
-
-    while true; do
-        CURRENT_WORKSPACE=$(get_workspace_fast)
-
-        if [ "$CURRENT_WORKSPACE" != "$LAST_WORKSPACE" ]; then
-            echo "→ Switched to Workspace $((CURRENT_WORKSPACE + 1))"
-
-            if [ -n "${WALLPAPERS[$CURRENT_WORKSPACE]}" ]; then
-                set_wallpaper_fast "${WALLPAPERS[$CURRENT_WORKSPACE]}"
-            else
-                echo "ℹ No wallpaper configured for Workspace $((CURRENT_WORKSPACE + 1))"
-            fi
-
-            LAST_WORKSPACE=$CURRENT_WORKSPACE
-        else
-            # Even if we haven't switched, verify the correct wallpaper is set
-            # This prevents GNOME from reverting wallpapers
-            if [ -n "${WALLPAPERS[$CURRENT_WORKSPACE]}" ]; then
-                ACTUAL_WALLPAPER=$(gsettings get org.gnome.desktop.background picture-uri | tr -d "'")
-                EXPECTED_WALLPAPER="${WALLPAPERS[$CURRENT_WORKSPACE]}"
-
-                if [ "$ACTUAL_WALLPAPER" != "$EXPECTED_WALLPAPER" ]; then
-                    echo "⚠ Correcting wallpaper for Workspace $((CURRENT_WORKSPACE + 1))"
-                    set_wallpaper_fast "${WALLPAPERS[$CURRENT_WORKSPACE]}"
-                fi
-            fi
-        fi
-
-        sleep 0.1  # 100ms polling for responsive switching
-    done
 }
 
-# Alternative: Ultra-fast polling version (if D-Bus doesn't work well)
-monitor_fast_polling() {
+# Event-driven monitor: xprop -spy prints a line each time _NET_CURRENT_DESKTOP
+# changes, so there is no polling. Rapid switches are debounced: the wallpaper
+# is set only once the workspace has been stable for DEBOUNCE seconds, and never
+# from a background job, so writes cannot pile up in GNOME Shell.
+DEBOUNCE=0.3
+
+monitor_workspace_changes() {
     echo "🚀 Fast Workspace Wallpaper Daemon Started"
-    echo "⚡ Using optimized polling (50ms intervals)"
+    echo "⚡ Using X11 property events (debounced ${DEBOUNCE}s)"
     echo "   Press Ctrl+C to stop"
     echo ""
-    
-    LAST_WORKSPACE=$(get_workspace_fast)
-    
-    # Set initial wallpaper
-    if [ -n "${WALLPAPERS[$LAST_WORKSPACE]}" ]; then
-        set_wallpaper_fast "${WALLPAPERS[$LAST_WORKSPACE]}"
-    fi
-    
+
+    local line ws applied=""
     while true; do
-        CURRENT_WORKSPACE=$(get_workspace_fast)
+        while read -r line; do
+            ws="${line##*= }"
+            # Drain further switches until things settle
+            while read -r -t "$DEBOUNCE" line; do
+                ws="${line##*= }"
+            done
+            [ "$ws" = "$applied" ] && continue
+            echo "→ Switched to Workspace $((ws + 1))"
+            apply_workspace "$ws"
+            applied="$ws"
+        done < <(xprop -root -spy _NET_CURRENT_DESKTOP 2>/dev/null)
 
-        if [ "$CURRENT_WORKSPACE" != "$LAST_WORKSPACE" ]; then
-            echo "→ Switched to Workspace $((CURRENT_WORKSPACE + 1))"
-
-            if [ -n "${WALLPAPERS[$CURRENT_WORKSPACE]}" ]; then
-                set_wallpaper_fast "${WALLPAPERS[$CURRENT_WORKSPACE]}" &
-            fi
-
-            LAST_WORKSPACE=$CURRENT_WORKSPACE
-        else
-            # Even if we haven't switched, verify the correct wallpaper is set
-            # This prevents GNOME from reverting wallpapers
-            if [ -n "${WALLPAPERS[$CURRENT_WORKSPACE]}" ]; then
-                ACTUAL_WALLPAPER=$(gsettings get org.gnome.desktop.background picture-uri | tr -d "'")
-                EXPECTED_WALLPAPER="${WALLPAPERS[$CURRENT_WORKSPACE]}"
-
-                if [ "$ACTUAL_WALLPAPER" != "$EXPECTED_WALLPAPER" ]; then
-                    echo "⚠ Correcting wallpaper for Workspace $((CURRENT_WORKSPACE + 1))"
-                    set_wallpaper_fast "${WALLPAPERS[$CURRENT_WORKSPACE]}" &
-                fi
-            fi
-        fi
-
-        sleep 0.05  # 50ms polling for near-instant response
+        # xprop exits if the X connection drops (e.g. shell restart); retry
+        sleep 2
+        applied=""
     done
 }
 
@@ -195,8 +181,8 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 [OPTIONS] MODE"
             echo ""
             echo "Modes:"
-            echo "  --daemon      (-d)  Use D-Bus signals (instant response)"
-            echo "  --fast-poll   (-f)  Use fast polling (50ms intervals)"
+            echo "  --daemon      (-d)  Event-driven via X11 property changes"
+            echo "  --fast-poll   (-f)  Same as --daemon (polling was removed)"
             echo "  --test        (-t)  Test workspace detection"
             echo "  --set-current (-s)  Set wallpaper for current workspace"
             echo ""
@@ -227,6 +213,7 @@ fi
 
 # Populate wallpapers from the specified directory
 populate_wallpapers "$IMAGE_DIR"
+case "$MODE" in daemon|fast-poll|set-current) scale_wallpapers ;; esac
 
 # Main execution
 case "$MODE" in
@@ -234,7 +221,8 @@ case "$MODE" in
         monitor_workspace_changes
         ;;
     fast-poll)
-        monitor_fast_polling
+        # Kept for existing autostart entries; polling was replaced by events
+        monitor_workspace_changes
         ;;
     test)
         echo "Testing workspace detection..."
