@@ -187,8 +187,11 @@ All shortcuts are GNOME settings stored in `configs/gnome-keybindings.dconf`. No
 | Ctrl+Shift+4 | Screenshot | `shell/keybindings` |
 | Ctrl+Alt+4 | Screenshot UI | `shell/keybindings` |
 | Ctrl+Alt+5 | Window screenshot | `shell/keybindings` |
+| Ctrl+Shift+D | Detach the current GNOME Terminal tab into its own window | `terminal/legacy/keybindings` |
 
 Super+Up/Down/Left/Right tiling comes from the Tiling Assistant extension, which is why the native `maximize`, `unmaximize` and `toggle-tiled-*` bindings are empty. Super+L lock is unbound on purpose (it triggers the NVIDIA VT-switch freeze). Ctrl+5…0 need the fixed 11 workspaces (`dynamic-workspaces=false`), also set in this file.
+
+GNOME Terminal ships with no key for Detach Terminal. Left unbound, Ctrl+Shift+D reaches the shell as Ctrl+D (end of input), so bash exits and the tab closes; binding it to `detach-tab` makes the terminal catch the keys first.
 
 ### Check shortcuts after every update
 
@@ -215,7 +218,7 @@ It lets conda's `gsettings` (in base and every env) load the system dconf module
 
 ### Saving shortcut changes
 
-To capture changes after editing shortcuts in Settings, re-dump the four paths (`org/gnome/desktop/wm/keybindings`, `org/gnome/mutter/keybindings`, `org/gnome/shell/keybindings`, `org/gnome/settings-daemon/plugins/media-keys`) into `configs/gnome-keybindings.dconf`, replacing your home path with `@HOME@`.
+To capture changes after editing shortcuts in Settings, re-dump the five paths (`org/gnome/desktop/wm/keybindings`, `org/gnome/mutter/keybindings`, `org/gnome/shell/keybindings`, `org/gnome/settings-daemon/plugins/media-keys`, `org/gnome/terminal/legacy/keybindings`) into `configs/gnome-keybindings.dconf`, replacing your home path with `@HOME@`.
 
 ---
 
@@ -422,7 +425,7 @@ linux_desktop_customization/
     nemo-glass                           # Nemo transparency wrapper script
     workspace-wallpapers-fast.sh         # per-workspace wallpaper daemon
     workspace-wallpapers.desktop         # XDG autostart for wallpaper daemon
-    gnome-keybindings.dconf              # workspace/window/screenshot shortcuts, Super+T tiler
+    gnome-keybindings.dconf              # workspace/window/screenshot/terminal shortcuts, Super+T tiler
     gnome-window-tiler                   # Super+T window tiling script
   check-hotkeys.sh                       # verify shortcuts after updates (--fix reloads them)
     gnome-terminal.dconf                 # terminal profile (colors, transparency, size)

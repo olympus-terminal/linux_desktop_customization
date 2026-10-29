@@ -47,3 +47,6 @@ name='Spotlight Terminal'
 
 [org/gnome/mutter]
 dynamic-workspaces=false
+
+[org/gnome/terminal/legacy/keybindings]
+detach-tab='<Primary><Shift>d'
