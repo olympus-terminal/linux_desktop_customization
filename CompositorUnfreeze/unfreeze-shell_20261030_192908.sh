@@ -1,0 +1,365 @@
+#!/usr/bin/env bash
+# unfreeze-shell: recover a hung GNOME Shell (X11) without logging out or rebooting.
+#
+#   At the laptop:  Ctrl+Alt+F3, log in, run `unfreeze-shell`, then Ctrl+Alt+F2 to get back to the desktop.
+#   From the Mac:   ssh -t drn2@<laptop hostname>.local .local/bin/unfreeze-shell
+#
+# What it does:
+#   1. Asks the shell's main loop for a D-Bus property, twice, 5 s each. If it answers, it stops there.
+#   2. Saves thread states, versions and the last 15 min of the journal to ~/gnome-shell-hangs/<YYYYMMDD_HHMMSS>/.
+#   3. Saves a core dump with gcore. This asks for your sudo password; Ctrl+C at the prompt skips it.
+#   4. Restarts the shell with SIGINT. gnome-shell does not catch SIGINT, and systemd counts a death by
+#      SIGINT as a clean exit, so the "Oh no! Something has gone wrong" screen does not come up.
+#      Windows stay open. Uses SIGHUP if a future shell catches SIGINT, and SIGKILL as the last resort.
+#      Run from a text console, it then switches the screen back to the desktop by itself.
+#   5. Waits for the new shell to answer, and hides the "Oh no" screen if it came up anyway.
+#
+# Options:
+#   --check         report only, change nothing
+#   --no-capture    skip the core dump (no sudo)
+#   --capture-only  save diagnostics and a core dump of the running shell, then stop. Use it once to test
+#                   step 3; the screen freezes while gcore runs
+#   --dry-run       write the diagnostics, but only print the capture, kill and hide steps
+#   --force         carry on even if the shell answers
+#
+# Exit status: 0 the shell answers (healthy or recovered); 1 hung (--check) or recovery failed;
+#              2 no shell running; 3 Wayland session (refused); 4 another copy running; 64 bad usage.
+#
+# Written 2026-10-30 for GNOME Shell 46.0, GJS 1.80.2, GLib 2.80.0 and systemd 255 on Ubuntu 24.04 (X11).
+# Background and test results: cause-and-fixes_20261030_180155.md in this directory.
+
+set -u
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin:$PATH   # system gdbus and awk, not conda's
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+export DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}
+
+UNIT=${UNFREEZE_UNIT:-org.gnome.Shell@x11.service}   # override only to test on a dummy unit
+OUT_ROOT=${UNFREEZE_OUT:-$HOME/gnome-shell-hangs}
+FAIL_UNIT=gnome-session-failed.service
+
+MODE=recover CAPTURE=1 DRY=0 FORCE=0
+for arg in "$@"; do
+    case $arg in
+        --check) MODE=check ;;
+        --capture-only) MODE=capture ;;
+        --no-capture) CAPTURE=0 ;;
+        --dry-run) DRY=1 ;;
+        --force) FORCE=1 ;;
+        -h|--help) sed -n '2,/^$/s/^# \{0,1\}//p' "$0"; exit 0 ;;
+        *) echo "Unknown option: $arg (see --help)" >&2; exit 64 ;;
+    esac
+done
+if [ "$(id -u)" -eq 0 ]; then
+    echo "Run this as your normal user, not with sudo. It asks for sudo itself when it needs it." >&2
+    exit 64
+fi
+
+LOG="" BUF=""
+say() {   # print, and keep a copy for the log file
+    printf '%s\n' "$*"
+    if [ -n "$LOG" ]; then printf '%s\n' "$*" >>"$LOG"; else BUF+="$*"$'\n'; fi
+}
+unit_prop() { systemctl --user show -p "$2" --value "$1" 2>/dev/null; }
+session_env() { systemctl --user show-environment 2>/dev/null | sed -n "s/^$1=//p"; }
+
+# The desktop's own display, never one forwarded over SSH
+DISPLAY=$(session_env DISPLAY) XAUTHORITY=$(session_env XAUTHORITY)
+export DISPLAY XAUTHORITY
+
+shell_answers() {   # needs the main loop; Peer.Ping is no test, because it is answered even while hung
+    timeout 8 gdbus call --session --timeout 5 --dest org.gnome.Shell --object-path /org/gnome/Shell \
+        --method org.freedesktop.DBus.Properties.Get org.gnome.Shell ShellVersion 2>&1
+}
+bus_answers() {
+    timeout 5 gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+        --method org.freedesktop.DBus.GetId >/dev/null 2>&1
+}
+x_answers() { timeout 5 xprop -root _NET_SUPPORTING_WM_CHECK >/dev/null 2>&1; }
+
+# One line per thread of PID $1, busiest first:
+# TID, state, CPU % and voluntary context switches over 2 s, wait channel, name
+thread_table() {
+    local pid=$1 hz t tid state ticks vol
+    local -A ticks0 vol0
+    hz=$(getconf CLK_TCK)
+    for t in /proc/"$pid"/task/*; do
+        tid=${t##*/}
+        ticks0[$tid]=$(awk '{sub(/^.*\) /, ""); print $12 + $13}' "$t/stat" 2>/dev/null)
+        vol0[$tid]=$(awk '$1 == "voluntary_ctxt_switches:" {print $2}' "$t/status" 2>/dev/null)
+    done
+    sleep 2
+    for t in /proc/"$pid"/task/*; do
+        tid=${t##*/}
+        [ -n "${ticks0[$tid]:-}" ] || continue
+        read -r state ticks < <(awk '{sub(/^.*\) /, ""); print $1, $12 + $13}' "$t/stat" 2>/dev/null) || continue
+        vol=$(awk '$1 == "voluntary_ctxt_switches:" {print $2}' "$t/status" 2>/dev/null)
+        printf '%s %s %d %d %s %s\n' "$tid" "$state" $(( (ticks - ticks0[$tid]) * 100 / (2 * hz) )) \
+            $(( ${vol:-0} - ${vol0[$tid]:-0} )) "$(cat "$t/wchan" 2>/dev/null || echo '?')" "$(cat "$t/comm" 2>/dev/null)"
+    done | sort -k3,3nr
+}
+describe() {   # readable form of thread_table rows
+    awk '{name = $6; for (i = 7; i <= NF; i++) name = name " " $i
+          wchan = ($5 == "0") ? "(running)" : $5
+          printf "TID %s \"%s\": state %s, %d%% CPU, %d voluntary switches in 2 s, waiting in %s\n", $1, name, $2, $3, $4, wchan}'
+}
+desktop_session() {   # this user's X11 login session
+    local s
+    for s in $(loginctl list-sessions --no-legend 2>/dev/null | awk -v u="$(id -un)" '$3 == u {print $1}'); do
+        if [ "$(loginctl show-session "$s" -p Type --value)" = x11 ]; then echo "$s"; return; fi
+    done
+}
+desktop_in_front() { [ "$(loginctl show-session "$1" -p Active --value 2>/dev/null)" = yes ]; }
+bring_desktop_forward() {   # let the new shell start on the visible VT, not behind a text console
+    local s vt
+    s=$(desktop_session)
+    if [ -z "$s" ] || desktop_in_front "$s"; then return 0; fi
+    vt=$(loginctl show-session "$s" -p VTNr --value)
+    if loginctl activate "$s" 2>/dev/null; then
+        say "   Switched the screen to the desktop (Ctrl+Alt+F$vt). The rest of this output is in $LOG"
+    else
+        say "   Switch to the desktop now: Ctrl+Alt+F$vt"
+    fi
+}
+pick_signal() {   # first of INT, HUP that PID $1 neither catches nor ignores (so the kernel just ends it)
+    local handled s n
+    handled=$(( 16#$(awk '/^SigCgt:/ {print $2}' /proc/"$1"/status) | 16#$(awk '/^SigIgn:/ {print $2}' /proc/"$1"/status) ))
+    for s in INT HUP; do
+        n=$(kill -l "$s")
+        if (( (handled >> (n - 1) & 1) == 0 )); then echo "$s"; return; fi
+    done
+    echo KILL
+}
+
+capture_core() {   # gcore needs root because kernel.yama.ptrace_scope=1
+    local need avail rc=1 skipped=0
+    if ! command -v gcore >/dev/null; then say "   gcore not found (package gdb), so no core dump."; return 1; fi
+    need=$(( $(awk '/^VmRSS:/ {print $2}' /proc/"$PID"/status) * 2 ))
+    avail=$(df -Pk "$DIR" | awk 'NR == 2 {print $4}')
+    if [ "$avail" -lt "$need" ]; then say "   Only $(( avail / 1024 )) MiB free in $DIR, so no core dump."; return 1; fi
+    if [ "$DRY" = 1 ]; then say "   [dry run] would run: sudo gcore -o $DIR/core $PID"; return 0; fi
+    say "   Saving a core dump of PID $PID. Type your sudo password; Ctrl+C skips this step."
+    say "   The screen stays frozen meanwhile. This takes about 10-60 s."
+    trap 'skipped=1' INT
+    if sudo -v && [ "$skipped" = 0 ]; then
+        sudo env -u DEBUGINFOD_URLS gcore -o "$DIR/core" "$PID" >"$DIR/gcore.log" 2>&1
+        rc=$?
+        sudo chown -R "$(id -u):$(id -g)" "$DIR"
+    fi
+    sudo -k   # do not leave sudo unlocked on a console that stays logged in
+    trap - INT
+    if [ "$skipped" = 1 ]; then say "   Skipped."; return 1; fi
+    if [ "$rc" -eq 0 ] && [ -s "$DIR/core.$PID" ]; then
+        say "   Saved $DIR/core.$PID ($(du -h "$DIR/core.$PID" | cut -f1)). It holds the shell's memory: keep it private."
+        return 0
+    fi
+    say "   No core dump (sudo or gcore failed, exit $rc). See $DIR/gcore.log if it exists."
+    return 1
+}
+
+hide_fail_screen() {   # unmap its windows but leave it running: stopping it ends the whole session
+    local fpid wins="" w i
+    fpid=$(unit_prop "$FAIL_UNIT" MainPID)
+    for i in $(seq 20); do
+        wins=$(xdotool search --pid "$fpid" 2>/dev/null) && [ -n "$wins" ] && break
+        sleep 0.5
+    done
+    if [ -z "$wins" ]; then
+        say "   The \"Oh no\" screen came up, but its windows were not found. Do not click Log Out on it."
+        return 1
+    fi
+    for w in $wins; do xdotool windowunmap "$w"; done
+    say "   Hid the \"Oh no\" screen (windows $(echo $wins)). Do not click Log Out; the next normal logout clears it."
+}
+
+alive() {   # running, and not just a zombie that systemd has yet to reap (slow under heavy load)
+    local st
+    st=$(awk '{sub(/^.*\) /, ""); print $1}' /proc/"$1"/stat 2>/dev/null)
+    [ -n "$st" ] && [ "$st" != Z ]
+}
+
+restart_shell() {
+    local sig fail_before kill_time new="" i out
+    sig=$(pick_signal "$PID")
+    if [ "$DRY" = 1 ]; then
+        say "   [dry run] would run: kill -s $sig $PID, then wait for systemd to start a new shell"
+        return 0
+    fi
+    fail_before=$(unit_prop "$FAIL_UNIT" ActiveEnterTimestampMonotonic)
+    kill_time=$(date '+%F %T')
+    say "   kill -s $sig $PID"
+    kill -s CONT "$PID" 2>/dev/null   # in case an interrupted gcore left it stopped
+    kill -s "$sig" "$PID" || { say "   kill failed."; return 1; }
+    for i in $(seq 20); do alive "$PID" || break; sleep 0.25; done
+    if alive "$PID"; then
+        say "   PID $PID survived SIG$sig for 5 s, so sending SIGKILL. The \"Oh no\" screen will come up and be hidden."
+        kill -s KILL "$PID"
+    fi
+    bring_desktop_forward
+    say "   Waiting for systemd to start the new shell..."
+    for i in $(seq 60); do
+        new=$(unit_prop "$UNIT" MainPID)
+        if [ "${new:-0}" != 0 ] && [ "$new" != "$PID" ] && [ "$(unit_prop "$UNIT" ActiveState)" = active ]; then break; fi
+        new=""
+        sleep 0.5
+    done
+    if [ -z "$new" ]; then
+        say "   No new shell after 30 s ($UNIT is $(unit_prop "$UNIT" ActiveState))."
+        say "   Look at: journalctl --user -u $UNIT --since '$kill_time'"
+        return 1
+    fi
+    for i in 1 2 3; do out=$(shell_answers) && break; out=""; done
+    sleep 2   # the "Oh no" screen, if any, starts within a second or two of the kill
+    if [ "$(unit_prop "$FAIL_UNIT" ActiveEnterTimestampMonotonic)" != "$fail_before" ] &&
+       [ "$(unit_prop "$FAIL_UNIT" ActiveState)" = active ]; then
+        hide_fail_screen
+    fi
+    journalctl --user -u "$UNIT" --since "$kill_time" --no-pager -o short-precise >"$DIR/journal-restart.txt" 2>&1
+    if grep -qE "Failed with result|Triggering OnFailure" "$DIR/journal-restart.txt"; then
+        say "   systemd counted the old shell's death as a failure (see $DIR/journal-restart.txt)."
+    fi
+    if [ -z "$out" ]; then
+        say "   The new shell (PID $new) is running but not answering yet. Give it 30 s, then run unfreeze-shell --check."
+        return 1
+    fi
+    say "   The new shell (PID $new) answers: $out"
+}
+
+# --- Which shell? ---
+state=$(unit_prop "$UNIT" ActiveState)
+if [ "$state" != active ]; then
+    if [ "$(unit_prop org.gnome.Shell@wayland.service ActiveState)" = active ]; then
+        say "This is a Wayland session. There the shell is the display server, so restarting it would end the"
+        say "session and close every app. This script only handles X11."
+        exit 3
+    fi
+    say "$UNIT is '${state:-unknown}', so there is no shell to restart. Is a GNOME X11 session logged in?"
+    exit 2
+fi
+PID=$(unit_prop "$UNIT" MainPID)
+say "GNOME Shell: PID $PID ($UNIT), running for $(ps -o etime= -p "$PID" | tr -d ' ')"
+
+if [ "$MODE" != check ]; then
+    exec 9>"$XDG_RUNTIME_DIR/unfreeze-shell.lock"
+    if ! flock -n 9; then say "Another unfreeze-shell is already running (here or over SSH). Let it finish."; exit 4; fi
+fi
+
+# --- 1. Is it hung? ---
+say ""
+say "1. Does the shell's main loop answer? (up to 2 x 5 s)"
+HEALTHY=0 ERR=""
+if ANSWER=$(shell_answers); then
+    HEALTHY=1
+else
+    ERR=$ANSWER
+    say "   No answer within 5 s. Trying once more..."
+    if ANSWER=$(shell_answers); then HEALTHY=1; else ERR=$ANSWER; fi
+fi
+if [ "$HEALTHY" = 1 ]; then
+    say "   Yes: $ANSWER"
+else
+    ANSWER="no answer${ERR:+ ($ERR)}"
+    say "   No${ERR:+ ($ERR)}."
+fi
+
+TABLE=$(thread_table "$PID")
+MAIN_ROW=$(awk -v p="$PID" '$1 == p' <<<"$TABLE")
+SPINNERS=$(awk -v p="$PID" '$1 != p && $3 >= 90' <<<"$TABLE")
+say "   Main thread: $(describe <<<"$MAIN_ROW")"
+if [ -n "$SPINNERS" ]; then
+    say "   Threads at 90% CPU or more:"
+    while IFS= read -r line; do say "     $line"; done < <(describe <<<"$SPINNERS")
+fi
+if [ "$HEALTHY" = 0 ] &&
+   awk '$2 == "S" && $4 == 0 && $5 ~ /futex/ {ok = 1} END {exit !ok}' <<<"$MAIN_ROW" &&
+   awk '{n = $6; for (i = 7; i <= NF; i++) n = n " " $i} n == "dconf worker" {ok = 1} END {exit !ok}' <<<"$SPINNERS"; then
+    say "   This matches the 2026-10-30 freeze: main thread stuck on a futex, 'dconf worker' spinning."
+fi
+
+if [ "$MODE" = check ]; then
+    if [ "$HEALTHY" = 1 ]; then say "VERDICT: OK, the shell is answering."; exit 0; fi
+    say "VERDICT: HUNG. Run unfreeze-shell without --check to save evidence and restart it."
+    exit 1
+fi
+if [ "$MODE" = recover ] && [ "$HEALTHY" = 1 ] && [ "$FORCE" = 0 ]; then
+    say "The shell is answering, so there is nothing to fix. (--force restarts it anyway.)"
+    exit 0
+fi
+if [ "$HEALTHY" = 0 ] && [ "$FORCE" = 0 ]; then
+    if ! bus_answers; then
+        say "The session bus is not answering either, so restarting the shell would not help."
+        say "Save what you can over SSH, then log out or reboot. (--force restarts the shell anyway.)"
+        exit 1
+    fi
+    if ! x_answers; then
+        say "The X server ($DISPLAY) is not answering either, so restarting the shell would not help."
+        say "Save what you can over SSH, then reboot. (--force restarts the shell anyway.)"
+        exit 1
+    fi
+fi
+
+# --- 2. Evidence that needs no password ---
+DIR=$OUT_ROOT/$(date +%Y%m%d_%H%M%S)
+if ! { mkdir -p "$OUT_ROOT" && chmod 700 "$OUT_ROOT" && mkdir "$DIR"; }; then
+    say "Cannot create $DIR"
+    exit 1
+fi
+LOG=$DIR/unfreeze.log
+printf '%s' "$BUF" >"$LOG"
+{
+    echo "unfreeze-shell ($(readlink -f "$0")): mode $MODE, capture $CAPTURE, dry run $DRY, force $FORCE"
+    echo "date: $(date -Is)   load: $(cut -d' ' -f1-3 /proc/loadavg)"
+    dpkg-query -W -f '${Package} ${Version}\n' gnome-shell mutter-common libgjs0g libglib2.0-0t64 libdconf1 2>/dev/null
+    systemctl --user show "$UNIT" -p Id -p MainPID -p ActiveState -p SubState -p NRestarts -p ExecMainStartTimestamp
+    echo "D-Bus property read: $ANSWER"
+    echo "session bus: $(bus_answers && echo answers || echo 'NO ANSWER')"
+    echo "X server $DISPLAY: $(x_answers && echo answers || echo 'NO ANSWER')"
+    grep -E '^(VmRSS|Threads|SigBlk|SigIgn|SigCgt):' /proc/"$PID"/status
+    echo
+    echo "TID STATE CPU% VOLUNTARY_SWITCHES_IN_2s WCHAN NAME"
+    echo "$TABLE"
+} >"$DIR/diagnostics.txt" 2>&1
+journalctl --user --since "-15 min" --no-pager -o short-precise >"$DIR/journal-user.txt" 2>&1
+journalctl -k --since "-15 min" --no-pager -o short-precise >"$DIR/journal-kernel.txt" 2>&1
+say ""
+say "2. Saved thread states and the last 15 min of the journal in $DIR"
+
+# --- 3. Core dump ---
+say ""
+if [ "$CAPTURE" = 1 ]; then
+    say "3. Core dump (for finding the cause later)"
+    capture_core
+    CAPTURED=$?
+else
+    say "3. Core dump skipped (--no-capture)"
+    CAPTURED=1
+fi
+if [ "$MODE" = capture ]; then
+    say ""
+    say "Capture only: the shell was not restarted."
+    exit "$CAPTURED"
+fi
+
+# --- 4 and 5. Restart and check ---
+say ""
+say "4. Restarting the shell (windows stay open)"
+if ! restart_shell; then
+    say ""
+    say "Recovery did not finish. Evidence is in $DIR"
+    exit 1
+fi
+say ""
+if [ "$DRY" = 1 ]; then
+    say "Dry run finished. Nothing was captured, killed or hidden. Diagnostics are in $DIR"
+    exit 0
+fi
+say "Done. Evidence is in $DIR"
+SESSION=$(desktop_session)
+if [ -n "$SESSION" ] && ! desktop_in_front "$SESSION"; then
+    say "Press Ctrl+Alt+F$(loginctl show-session "$SESSION" -p VTNr --value) to go back to the desktop."
+fi
+TTY_NOW=$(tty 2>/dev/null)
+case $TTY_NOW in   # run from a text console: say on the desktop that it worked
+    /dev/tty[0-9]*) notify-send -a unfreeze-shell "GNOME Shell was restarted" \
+        "Evidence: $DIR. The text console is still logged in: Ctrl+Alt+F${TTY_NOW#/dev/tty}, then exit." 2>/dev/null ;;
+esac
+exit 0
