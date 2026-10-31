@@ -9,6 +9,7 @@ Usage:
     ./run.sh --hands-free -c        # Output to clipboard instead of typing
 """
 import asyncio
+import os
 import signal
 import sys
 import threading
@@ -23,6 +24,11 @@ from tray_icon import create_indicator, TrayStatus
 from vad import VoiceActivityDetector, VADState
 from voice_commands import VoiceCommandProcessor, CommandExecutor, CommandAction
 from homonym_fixer import HomonymFixer, RuleBasedFixer, create_fixer
+
+
+# After a quit request, force the process to end if shutdown has not finished by then
+SHUTDOWN_TIMEOUT_S = 5.0
+
 
 class HandsFreeDictation:
     """
@@ -86,7 +92,7 @@ class HandsFreeDictation:
         )
 
         # Status indicator
-        self.indicator = create_indicator(use_tray=use_tray)
+        self.indicator = create_indicator(use_tray=use_tray, on_quit=self.request_stop)
 
         # Voice commands (optional)
         self.enable_commands = enable_commands
@@ -108,6 +114,7 @@ class HandsFreeDictation:
 
         # State
         self._is_running = False
+        self._stop_requested = False
         self._audio_buffer = bytearray()
         self._is_transcribing = False
         self._utterance_count = 0
@@ -119,6 +126,28 @@ class HandsFreeDictation:
             on_speech_end=self._on_speech_end,
             on_level=self._on_level,
         )
+
+    def request_stop(self, reason: str = "tray Quit"):
+        """Ask the main loop to stop (safe from signal handlers and the tray thread).
+
+        A second request, or a shutdown that takes longer than
+        SHUTDOWN_TIMEOUT_S, ends the process immediately so dictation can never
+        keep listening after it was told to quit.
+        """
+        if self._stop_requested:
+            print(f"\n{reason} again: forcing exit", flush=True)
+            os._exit(1)
+        self._stop_requested = True
+        self._is_running = False
+        print(f"\n\nShutting down ({reason})...", flush=True)
+
+        def _force_exit():
+            print(f"\nShutdown took over {SHUTDOWN_TIMEOUT_S:.0f}s: forcing exit", flush=True)
+            os._exit(1)
+
+        timer = threading.Timer(SHUTDOWN_TIMEOUT_S, _force_exit)
+        timer.daemon = True
+        timer.start()
 
     def _on_speech_start(self):
         """Called when VAD detects speech start."""
@@ -246,13 +275,12 @@ class HandsFreeDictation:
         print("Calibrating ambient noise (1 second, stay quiet)...")
         print()
 
-        # Set up signal handler
+        # Stop on Ctrl-C, kill/pkill, and terminal window closed (SIGHUP)
         def signal_handler(sig, frame):
-            print("\n\nShutting down...")
-            self._is_running = False
+            self.request_stop(signal.Signals(sig).name)
 
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            signal.signal(sig, signal_handler)
 
         try:
             while self._is_running:
@@ -272,10 +300,13 @@ class HandsFreeDictation:
 
     def cleanup(self):
         """Clean up resources."""
-        self.audio.stop()
-        self.audio.close()
-        self.indicator.stop()
-        print(f"\nTotal utterances: {self._utterance_count}")
+        for step in (self.audio.close, self.indicator.stop):
+            try:
+                step()
+            except Exception as e:
+                print(f"Cleanup error in {step.__qualname__}: {e}")
+        print(f"\nTotal utterances: {self._utterance_count}", flush=True)
+
 
 def main():
     import argparse
@@ -369,6 +400,13 @@ def main():
     )
 
     asyncio.run(app.run())
+
+    # Leave without interpreter teardown: the tray (X11), PortAudio and CUDA
+    # threads can hang it, which kept the process alive after "Shutting down".
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
+
 
 if __name__ == "__main__":
     main()

@@ -13,11 +13,13 @@ try:
 except ImportError:
     TRAY_AVAILABLE = False
 
+
 class TrayStatus(Enum):
     IDLE = "idle"
     RECORDING = "recording"
     PROCESSING = "processing"
     ERROR = "error"
+
 
 class TrayIcon:
     """
@@ -171,9 +173,12 @@ class TrayIcon:
 
     def stop(self):
         """Stop tray icon."""
-        if self._icon:
-            self._icon.stop()
-            self._icon = None
+        icon, self._icon = self._icon, None
+        if icon:
+            try:
+                icon.stop()
+            except Exception as e:
+                print(f"Tray icon stop failed: {e}")
 
     def set_status(self, status: TrayStatus):
         """Update status and refresh icon."""
@@ -187,6 +192,7 @@ class TrayIcon:
         self._audio_level = min(1.0, max(0.0, level))
         if self._icon and self._status == TrayStatus.RECORDING:
             self._icon.icon = self._create_icon_image(self._status, self._audio_level)
+
 
 class ConsoleIndicator:
     """
@@ -220,23 +226,26 @@ class ConsoleIndicator:
             bars = int(level * 20)
             print(f"\r🔴 Recording [{'█' * bars}{' ' * (20 - bars)}]", end="", flush=True)
 
-def create_indicator(use_tray: bool = True):
+
+def create_indicator(use_tray: bool = True, on_quit: Optional[Callable[[], None]] = None):
     """
     Create appropriate status indicator.
 
     Args:
         use_tray: If True, try to use system tray. Falls back to console.
+        on_quit: Called when the user picks "Quit" in the tray menu.
 
     Returns:
         TrayIcon or ConsoleIndicator
     """
     if use_tray and TRAY_AVAILABLE:
         try:
-            return TrayIcon()
+            return TrayIcon(on_quit=on_quit)
         except Exception as e:
             print(f"Could not create tray icon: {e}")
 
     return ConsoleIndicator()
+
 
 def test_tray():
     """Test tray icon functionality."""
@@ -268,6 +277,7 @@ def test_tray():
     time.sleep(2)
     indicator.stop()
     print("Test complete!")
+
 
 if __name__ == "__main__":
     test_tray()
