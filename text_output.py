@@ -2,15 +2,31 @@
 Text output module for Voxtral dictation.
 Handles typing text into active window (xdotool) and clipboard operations.
 """
+import os
 import subprocess
 import shutil
 from typing import Optional
 from enum import Enum
 
+# Never send keystrokes to these windows (X11 WM_CLASS, lowercase): in a media
+# player every letter is a shortcut (space/p/. pause, s screenshot, m mute,
+# f fullscreen), so dictation typed into a focused mpv "froze" the video
+# (2026-10-31). Text meant for them goes to the clipboard instead.
+# Override with DICTATION_NO_TYPE_CLASSES="mpv,vlc,..." ("" disables).
+NO_TYPE_CLASSES = {
+    c.strip().lower()
+    for c in os.environ.get(
+        "DICTATION_NO_TYPE_CLASSES", "mpv,vlc,celluloid,io.github.celluloid_player.celluloid,smplayer,totem"
+    ).split(",")
+    if c.strip()
+}
+
+
 class OutputMode(Enum):
     TYPE = "type"           # Type directly into active window
     CLIPBOARD = "clipboard" # Copy to clipboard only
     BOTH = "both"           # Type and copy to clipboard
+
 
 class TextOutput:
     """
@@ -36,6 +52,31 @@ class TextOutput:
         if mode in (OutputMode.CLIPBOARD, OutputMode.BOTH) and not self._xclip:
             print("Warning: xclip not found. Install with: sudo apt install xclip")
 
+    def _focused_class(self) -> str:
+        """WM_CLASS of the focused window as "instance,class", lowercase ('' if unknown)."""
+        # This xdotool has no getwindowclassname; read WM_CLASS with xprop:
+        #   WM_CLASS(STRING) = "instance", "Class"   (mpv: "gl", "mpv")
+        try:
+            wid = subprocess.run(
+                ["xdotool", "getactivewindow"], capture_output=True, text=True, timeout=2,
+            ).stdout.strip()
+            if not wid:
+                return ""
+            out = subprocess.run(
+                ["xprop", "-id", wid, "WM_CLASS"], capture_output=True, text=True, timeout=2,
+            ).stdout
+            names = out.split("=", 1)[1].replace('"', "").split(",") if "=" in out else []
+            return ",".join(n.strip().lower() for n in names)
+        except Exception:
+            return ""
+
+    def _blocked_window(self) -> str:
+        """Return the focused window's class if keystrokes must not go there."""
+        if not (self._xdotool and NO_TYPE_CLASSES):
+            return ""
+        cls = self._focused_class()
+        return cls if NO_TYPE_CLASSES.intersection(cls.split(",")) else ""
+
     def type_text(self, text: str) -> bool:
         """
         Type text into the currently focused window using xdotool.
@@ -46,6 +87,13 @@ class TextOutput:
             return False
 
         if not text:
+            return True
+
+        blocked = self._blocked_window()
+        if blocked:
+            print(f"Focused window is {blocked}: not typing (keys are player shortcuts); text copied to clipboard")
+            if self.mode == OutputMode.TYPE:  # BOTH copies it anyway
+                self.copy_to_clipboard(text)
             return True
 
         try:
@@ -127,6 +175,8 @@ class TextOutput:
         """Send backspace keys to delete characters."""
         if not self._xdotool:
             return False
+        if self._blocked_window():
+            return True
 
         try:
             subprocess.run(
@@ -143,6 +193,8 @@ class TextOutput:
         """Press a specific key (e.g., 'Return', 'Tab')."""
         if not self._xdotool:
             return False
+        if self._blocked_window():
+            return True
 
         try:
             subprocess.run(
@@ -154,6 +206,7 @@ class TextOutput:
         except Exception as e:
             print(f"Key press error: {e}")
             return False
+
 
 class TextProcessor:
     """
@@ -192,6 +245,7 @@ class TextProcessor:
         """Reset processor state (e.g., for new dictation session)."""
         self._sentence_start = True
 
+
 def test_output():
     """Test text output functionality."""
     print("=== Text Output Test ===\n")
@@ -206,6 +260,7 @@ def test_output():
 
     print("\nTo test typing, focus a text field and run:")
     print("  python -c \"from text_output import TextOutput, OutputMode; TextOutput(OutputMode.TYPE).type_text('Test typing')\"")
+
 
 if __name__ == "__main__":
     test_output()
