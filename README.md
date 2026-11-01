@@ -166,7 +166,7 @@ The threaded pipeline means recording continues while the previous utterance is 
 
 ### Stopping dictation / it keeps listening
 
-Any of these stops it and ends the process: Ctrl-C, closing the terminal window it runs in, tray icon > Quit, or `pkill -f hands_free.py`. If shutdown has not finished 5 seconds after the request (or you quit a second time), the process is force-ended. A copy started in the background without a terminal (for example by a script with `setsid`/`nohup`) has no window to close: use the tray Quit or `pkill -f hands_free.py`.
+Any of these stops it and ends the process: Ctrl-C, closing the terminal window it runs in, clicking the tray icon (on GNOME there is no tray menu: a click quits), or `pkill -f hands_free.py`. If shutdown has not finished 5 seconds after the request (or you quit a second time), the process is force-ended. A copy started in the background without a terminal (for example by a script with `setsid`/`nohup`) has no window to close: click the tray icon or use `pkill -f hands_free.py`.
 
 ### Hallucinations ("Thanks for watching", etc.)
 

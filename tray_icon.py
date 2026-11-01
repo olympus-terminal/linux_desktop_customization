@@ -124,6 +124,13 @@ class TrayIcon:
 
     def _create_menu(self) -> pystray.Menu:
         """Create context menu."""
+        if not pystray.Icon.HAS_MENU:
+            # The plain X11 backend (used when AppIndicator/GObject is not
+            # installed) shows no menu at all; a click only runs the default
+            # item. Make that click quit, so the icon is a working off switch.
+            return pystray.Menu(
+                pystray.MenuItem("Quit", self._menu_quit, default=True),
+            )
         return pystray.Menu(
             pystray.MenuItem(
                 "Toggle Recording",
@@ -161,10 +168,12 @@ class TrayIcon:
         if not TRAY_AVAILABLE:
             return
 
+        self._title = ("Dictation - click to quit" if not pystray.Icon.HAS_MENU
+                       else "Voxtral Dictation")
         self._icon = pystray.Icon(
             name="voxtral-dictation",
             icon=self._create_icon_image(TrayStatus.IDLE),
-            title="Voxtral Dictation",
+            title=self._title,
             menu=self._create_menu(),
         )
 
@@ -185,7 +194,7 @@ class TrayIcon:
         self._status = status
         if self._icon:
             self._icon.icon = self._create_icon_image(status, self._audio_level)
-            self._icon.title = f"Voxtral Dictation - {status.value.title()}"
+            self._icon.title = f"{self._title} ({status.value})"
 
     def set_audio_level(self, level: float):
         """Update audio level indicator (0.0 to 1.0)."""
