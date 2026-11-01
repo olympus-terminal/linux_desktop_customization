@@ -4,6 +4,7 @@ Provides offline speech-to-text without API dependency.
 """
 import asyncio
 import io
+import os
 import wave
 import tempfile
 from typing import AsyncIterator, Optional, Callable
@@ -16,12 +17,35 @@ except ImportError:
     WHISPER_AVAILABLE = False
     print("faster-whisper not installed. Run: pip install faster-whisper")
 
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+# Personal list first (vocabulary.local.txt is git-ignored, so private project names
+# never reach the public repo), else the generic example vocabulary.txt.
+_VOCAB_FILES = [os.path.join(_HERE, "vocabulary.local.txt"), os.path.join(_HERE, "vocabulary.txt")]
+
+
+def _vocabulary_prompt() -> Optional[str]:
+    """Spelling hints from vocabulary.local.txt or vocabulary.txt (re-read each time, so edits apply at once)."""
+    for path in _VOCAB_FILES:
+        try:
+            with open(path) as f:
+                terms = [t.strip() for line in f if not line.lstrip().startswith("#")
+                         for t in line.split(",") if t.strip()]
+            break
+        except OSError:
+            continue
+    else:
+        return None
+    return ("Glossary: " + ", ".join(terms) + ".") if terms else None
+
+
 @dataclass
 class TranscriptionResult:
     """Result from transcription."""
     text: str
     is_final: bool
     confidence: Optional[float] = None
+
 
 class LocalTranscriber:
     """
@@ -118,11 +142,17 @@ class LocalTranscriber:
                     min_silence_duration_ms=500,
                     speech_pad_ms=200,
                 ),
+                initial_prompt=_vocabulary_prompt(),
+                condition_on_previous_text=False,
             )
 
-            # Collect all text
+            # Collect all text; drop segments Whisper itself rates as non-speech
+            # (noise -> "Thank you." style hallucinations)
             text_parts = []
             for segment in segments:
+                if segment.no_speech_prob > 0.6 and segment.avg_logprob < -1.0:
+                    print(f" [dropped as noise: {segment.text.strip()!r}]", end="")
+                    continue
                 text_parts.append(segment.text.strip())
 
             return " ".join(text_parts)
@@ -198,6 +228,7 @@ class LocalTranscriber:
         """Reset transcription state."""
         self._audio_buffer.clear()
 
+
 def create_local_transcriber(
     model_size: str = "base",
     device: str = "auto",
@@ -234,6 +265,7 @@ def create_local_transcriber(
         **kwargs,
     )
 
+
 async def test_local_transcriber():
     """Test local transcriber."""
     print("=== Local Transcriber Test ===\n")
@@ -262,6 +294,7 @@ async def test_local_transcriber():
         pass
 
     print("\nTest complete!")
+
 
 if __name__ == "__main__":
     asyncio.run(test_local_transcriber())

@@ -21,6 +21,22 @@ NO_TYPE_CLASSES = {
     if c.strip()
 }
 
+# Type ONLY into terminal windows (user, 2026-11-01: "we only want to dictate into the
+# terminal", Claude Code / agent TUIs included). Anything typed elsewhere is dropped
+# (printed in the dictation console only), so noise hallucinations like "Thank you."
+# cannot land in a browser or editor. Override with DICTATION_TYPE_ONLY_CLASSES="a,b"
+# ("" types into every window except NO_TYPE_CLASSES, the old behaviour).
+TYPE_ONLY_CLASSES = {
+    c.strip().lower()
+    for c in os.environ.get(
+        "DICTATION_TYPE_ONLY_CLASSES",
+        "gnome-terminal-server,gnome-terminal,org.gnome.ptyxis,ptyxis,org.gnome.console,kgx,"
+        "xterm,uxterm,kitty,alacritty,konsole,terminator,tilix,wezterm,org.wezfurlong.wezterm,"
+        "foot,xfce4-terminal,mate-terminal,lxterminal,urxvt,st-256color,ghostty,com.mitchellh.ghostty",
+    ).split(",")
+    if c.strip()
+}
+
 
 class OutputMode(Enum):
     TYPE = "type"           # Type directly into active window
@@ -72,10 +88,15 @@ class TextOutput:
 
     def _blocked_window(self) -> str:
         """Return the focused window's class if keystrokes must not go there."""
-        if not (self._xdotool and NO_TYPE_CLASSES):
+        if not (self._xdotool and (NO_TYPE_CLASSES or TYPE_ONLY_CLASSES)):
             return ""
         cls = self._focused_class()
-        return cls if NO_TYPE_CLASSES.intersection(cls.split(",")) else ""
+        names = set(cls.split(","))
+        if NO_TYPE_CLASSES.intersection(names):
+            return cls or "unknown window"
+        if TYPE_ONLY_CLASSES and not TYPE_ONLY_CLASSES.intersection(names):
+            return cls or "unknown window"
+        return ""
 
     def type_text(self, text: str) -> bool:
         """
@@ -91,9 +112,7 @@ class TextOutput:
 
         blocked = self._blocked_window()
         if blocked:
-            print(f"Focused window is {blocked}: not typing (keys are player shortcuts); text copied to clipboard")
-            if self.mode == OutputMode.TYPE:  # BOTH copies it anyway
-                self.copy_to_clipboard(text)
+            print(f" [focused window is {blocked}, not a terminal: not typed]", end="")
             return True
 
         try:

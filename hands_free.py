@@ -13,6 +13,7 @@ import os
 import signal
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from collections import deque
 
@@ -21,7 +22,7 @@ from audio_capture import AudioCapture
 from transcriber_local import create_local_transcriber, LocalTranscriber
 from text_output import TextOutput, TextProcessor, OutputMode
 from tray_icon import create_indicator, TrayStatus
-from vad import VoiceActivityDetector, VADState
+from vad import VoiceActivityDetector, SileroVAD, VADState
 from voice_commands import VoiceCommandProcessor, CommandExecutor, CommandAction
 from homonym_fixer import HomonymFixer, RuleBasedFixer, create_fixer
 
@@ -44,13 +45,14 @@ class HandsFreeDictation:
     def __init__(
         self,
         output_mode: OutputMode = OutputMode.TYPE,
-        model_size: str = "base",
+        model_size: str = "large-v3-turbo",
         language: str = "en",
         use_tray: bool = True,
         enable_commands: bool = True,
         fix_homonyms: bool = False,
         homonym_llm: bool = True,
         device_name: Optional[str] = None,
+        energy_vad: bool = False,
     ):
         self.config = get_config()
 
@@ -63,13 +65,22 @@ class HandsFreeDictation:
             device_name=mic_device,
         )
 
-        # Voice activity detection
-        self.vad = VoiceActivityDetector(
-            sample_rate=self.config.audio.sample_rate,
-            min_speech_ms=200,
-            min_silence_ms=600,
-            trailing_silence_ms=1200,
-        )
+        # Voice activity detection: Silero (voice, not loudness) by default since
+        # 2026-11-01; the old energy VAD stays available with --energy-vad.
+        if energy_vad:
+            self.vad = VoiceActivityDetector(
+                sample_rate=self.config.audio.sample_rate,
+                min_speech_ms=200,
+                min_silence_ms=600,
+                trailing_silence_ms=1200,
+            )
+        else:
+            self.vad = SileroVAD(sample_rate=self.config.audio.sample_rate)
+
+        # Transcribe on a worker thread so the microphone keeps being read
+        # (transcribing inside the read loop caused "input overflow" = lost audio).
+        # One worker keeps the text in spoken order.
+        self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="transcribe")
 
         # Local transcriber (load model eagerly so first utterance isn't slow)
         print(f"Loading faster-whisper {model_size}...")
@@ -152,6 +163,8 @@ class HandsFreeDictation:
     def _on_speech_start(self):
         """Called when VAD detects speech start."""
         self._audio_buffer.clear()
+        if hasattr(self.vad, "preroll"):
+            self._audio_buffer.extend(self.vad.preroll())
         self.indicator.set_status(TrayStatus.RECORDING)
         print("\n🎤 Listening...", end="", flush=True)
 
@@ -173,8 +186,8 @@ class HandsFreeDictation:
         self.indicator.set_status(TrayStatus.PROCESSING)
         print(f" ({audio_seconds:.1f}s) transcribing...", end="", flush=True)
 
-        # Run transcription
-        self._transcribe_and_output(audio_data)
+        # Run transcription off the audio loop
+        self._worker.submit(self._transcribe_and_output, audio_data)
 
     def _on_level(self, level: float, is_speech: bool):
         """Called with audio level updates."""
@@ -300,6 +313,7 @@ class HandsFreeDictation:
 
     def cleanup(self):
         """Clean up resources."""
+        self._worker.shutdown(wait=False, cancel_futures=True)
         for step in (self.audio.close, self.indicator.stop):
             try:
                 step()
@@ -316,9 +330,9 @@ def main():
     )
     parser.add_argument(
         "--model", "-m",
-        default="base",
-        choices=["tiny", "base", "small", "medium", "large-v3"],
-        help="Whisper model size (default: base)"
+        default="large-v3-turbo",
+        choices=["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"],
+        help="Whisper model (default: large-v3-turbo; ~0.2 s per 8 s of speech on the RTX 4080 laptop GPU)"
     )
     parser.add_argument(
         "--clipboard", "-c",
@@ -361,6 +375,11 @@ def main():
         help="Microphone device name pattern (e.g. 'RØDE NT-USB+', 'Blue Yeti')"
     )
     parser.add_argument(
+        "--energy-vad",
+        action="store_true",
+        help="Use the old loudness-based speech detector instead of Silero",
+    )
+    parser.add_argument(
         "--list-devices",
         action="store_true",
         help="List available audio input devices and exit"
@@ -397,6 +416,7 @@ def main():
         fix_homonyms=args.fix_homonyms,
         homonym_llm=not args.homonym_rules,
         device_name=args.device,
+        energy_vad=args.energy_vad,
     )
 
     asyncio.run(app.run())

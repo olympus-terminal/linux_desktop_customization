@@ -258,6 +258,132 @@ def test_vad(device_name: Optional[str] = None):
 
     print(f"Total utterances detected: {utterance_count}")
 
+class SileroVAD:
+    """
+    Speech detector based on Silero VAD (the ONNX model bundled with faster-whisper).
+
+    Added 2026-11-01: the energy VAD above treats any loud sound as speech, so
+    treadmill footfalls and fans started false utterances ("no speech detected")
+    and kept real utterances open until a quiet moment (long delay before text
+    appeared). Silero scores each 32 ms frame for *voice*, so steady or thumping
+    noise does not count.
+
+    Same interface as VoiceActivityDetector (set_callbacks, process_chunk, state).
+    Each chunk is scored by running the model over the last ~1 s of audio
+    (~1 ms on CPU) and taking the highest probability of the newest frames.
+    """
+
+    WINDOW = 512 * 32  # 1.024 s at 16 kHz
+
+    def __init__(
+        self,
+        sample_rate: int = 16000,
+        start_prob: float = 0.5,       # voice probability that counts as speech
+        end_prob: float = 0.35,        # below this the speaker is pausing
+        min_speech_ms: int = 160,      # this much voice in a row starts an utterance
+        end_silence_ms: int = 700,     # this much pause ends an utterance
+        max_utterance_s: float = 30.0, # hard cap so noise can never hold it open
+        preroll_ms: int = 500,         # audio kept from before the start trigger
+    ):
+        from faster_whisper.vad import get_vad_model
+
+        assert sample_rate == 16000, "Silero VAD runs at 16 kHz"
+        self.sample_rate = sample_rate
+        self.start_prob, self.end_prob = start_prob, end_prob
+        self.min_speech_ms, self.end_silence_ms = min_speech_ms, end_silence_ms
+        self.max_utterance_ms = max_utterance_s * 1000
+        self.preroll_ms = preroll_ms
+        self._model = get_vad_model()
+        self._window = np.zeros(self.WINDOW, dtype=np.float32)
+        self._preroll: deque = deque()
+        self._preroll_samples = 0
+        self._on_speech_start = self._on_speech_end = self._on_level = None
+        self.reset()
+        print(f"VAD: Silero (start p>{start_prob}, end after {end_silence_ms} ms below p<{end_prob})")
+
+    def set_callbacks(self, on_speech_start=None, on_speech_end=None, on_level=None):
+        self._on_speech_start = on_speech_start
+        self._on_speech_end = on_speech_end
+        self._on_level = on_level
+
+    def reset(self):
+        self._state = VADState.SILENCE
+        self._t_ms = 0.0
+        self._voice_run_ms = 0.0
+        self._pause_ms = 0.0
+        self._utt_start_ms = 0.0
+        self._window[:] = 0
+        self._preroll.clear()
+        self._preroll_samples = 0
+        self.last_prob = 0.0
+
+    def preroll(self) -> bytes:
+        """Audio from just before the current utterance was detected (int16 PCM)."""
+        return b"".join(self._preroll)
+
+    def process_chunk(self, audio_data: bytes) -> bool:
+        samples = np.frombuffer(audio_data, dtype=np.int16)
+        n = len(samples)
+        if n == 0:
+            return self.is_speaking
+        chunk_ms = n * 1000 / self.sample_rate
+        self._t_ms += chunk_ms
+
+        f = samples.astype(np.float32) / 32768.0
+        if n >= self.WINDOW:
+            self._window[:] = f[-self.WINDOW:]
+        else:
+            self._window = np.roll(self._window, -n)
+            self._window[-n:] = f
+        probs = np.asarray(self._model(self._window)).ravel()
+        newest = max(1, int(np.ceil(n / 512)))
+        p = float(probs[-newest:].max())
+        self.last_prob = p
+
+        if self._state == VADState.SILENCE:
+            self._voice_run_ms = self._voice_run_ms + chunk_ms if p >= self.start_prob else 0.0
+            if self._voice_run_ms >= self.min_speech_ms:
+                self._state = VADState.SPEAKING
+                self._utt_start_ms = self._t_ms - self._voice_run_ms
+                self._pause_ms = 0.0
+                if self._on_speech_start:
+                    self._on_speech_start()  # caller may read preroll() here
+            else:
+                # remember recent audio so the first syllables are not cut off
+                self._preroll.append(audio_data)
+                self._preroll_samples += n
+                while self._preroll and self._preroll_samples - len(self._preroll[0]) // 2 >= self.preroll_ms * 16:
+                    self._preroll_samples -= len(self._preroll.popleft()) // 2
+        else:
+            if p < self.end_prob:
+                self._pause_ms += chunk_ms
+                self._state = VADState.TRAILING
+            elif p >= self.start_prob:
+                self._pause_ms = 0.0
+                self._state = VADState.SPEAKING
+            too_long = self._t_ms - self._utt_start_ms >= self.max_utterance_ms
+            if self._pause_ms >= self.end_silence_ms or too_long:
+                self._state = VADState.SILENCE
+                self._voice_run_ms = 0.0
+                self._preroll.clear()
+                self._preroll_samples = 0
+                if self._on_speech_end:
+                    self._on_speech_end()
+                return False
+
+        if self._on_level:
+            self._on_level(p, self.is_speaking)
+        return self.is_speaking
+
+    @property
+    def state(self) -> VADState:
+        return self._state
+
+    @property
+    def is_speaking(self) -> bool:
+        return self._state in (VADState.SPEAKING, VADState.TRAILING)
+
+
 if __name__ == "__main__":
     import os
 
