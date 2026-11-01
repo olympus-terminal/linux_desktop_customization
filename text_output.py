@@ -47,27 +47,41 @@ TYPE_ONLY_CLASSES = {
 _CHAR_MAP = {
     "\u2018": "'", "\u2019": "'", "\u02bc": "'", "`": "'",
     "\u2026": "...", "\u2014": " \x03 ", "\u2013": " \x03 ",
-    "!": ".", ";": ",", "%": " percent", "&": " and ",
+    "!": ".", ";": ",", "%": " percent ", "&": " and ",
+    "\u00d7": " times ", "\u00b0": " degrees ", "\u2044": "/",
+    "\u00df": "ss", "\u00e6": "ae", "\u00c6": "AE", "\u0153": "oe", "\u0152": "OE",
+    "\u00f8": "o", "\u00d8": "O", "\u0142": "l", "\u0141": "L", "\u00f0": "d", "\u00fe": "th",
 }
+
+
+def _to_ascii(c: str) -> str:
+    """ASCII for one character: its accent-free form (e -> e), else a space, so nothing
+    is silently glued together (5x3 must not become 53)."""
+    import unicodedata
+    if c.isascii():
+        return c
+    out = "".join(_CHAR_MAP.get(d, d) for d in unicodedata.normalize("NFKD", c))
+    out = "".join(d for d in out if d.isascii())
+    return out if out.strip() else " "
 
 
 def plain_text(text: str) -> str:
     """Reduce dictated text to letters, digits, spaces, . , ? and " - " dashes (plus in-word ' and -)."""
     import re
-    import unicodedata
     if not text:
         return text
     lead = " " if text[:1].isspace() else ""
     t = text.replace("--", "\u2014")
     t = "".join(_CHAR_MAP.get(c, c) for c in t)
-    t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode()  # e.g. cafe for café
+    t = "".join(_to_ascii(c) for c in t)                  # cafe for café, space for unknown symbols
     t = re.sub(r"(?<=\d):(?=\d)", "\x00", t)                # keep 10:30
+    t = re.sub(r"(?<=\d)/(?=\d)", "\x04", t)                # keep 1/2, 24/7 (never a leading /command)
     t = re.sub(r"(?<=[A-Za-z0-9])'(?=[A-Za-z])", "\x01", t)   # don't, user's
     t = re.sub(r"(?<=[A-Za-z0-9])-(?=[A-Za-z0-9])", "\x02", t)  # re-run, large-v3
     t = re.sub(r"(?<=\s)-(?=\s)", "\x03", t)                 # spaced " - " is a dash
     t = t.replace(":", ",")
-    t = re.sub(r"[^A-Za-z0-9 .,?\x00\x01\x02\x03]", " ", t)
-    t = t.replace("\x00", ":").replace("\x01", "'").replace("\x02", "-")
+    t = re.sub(r"[^A-Za-z0-9 .,?\x00\x01\x02\x03\x04]", " ", t)
+    t = t.replace("\x00", ":").replace("\x01", "'").replace("\x02", "-").replace("\x04", "/")
     t = re.sub(r"\s+([.,?])", r"\1", t)              # no space before punctuation
     t = re.sub(r",(\s*,)+", ",", t)                   # ", ," -> ","
     t = re.sub(r",\s*([.?])", r"\1", t)              # ", ." -> "."
