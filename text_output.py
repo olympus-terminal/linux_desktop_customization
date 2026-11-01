@@ -38,6 +38,47 @@ TYPE_ONLY_CLASSES = {
 }
 
 
+# Plain-text filter (user, 2026-11-01: "it should not make special characters ... like curly
+# brackets or quotation marks"; "maybe m-dashes are okay"). Typed text keeps only letters,
+# digits, spaces and . , ? plus dashes, typed as plain " - ".
+# Apostrophes survive only inside words (don't, user's), hyphens only between letters/digits
+# (re-run, large-v3). Non-ASCII is never typed: xdotool types such characters by remapping a
+# spare key on the fly, and terminals sometimes read the wrong key (stray "}" after words).
+_CHAR_MAP = {
+    "\u2018": "'", "\u2019": "'", "\u02bc": "'", "`": "'",
+    "\u2026": "...", "\u2014": " \x03 ", "\u2013": " \x03 ",
+    "!": ".", ";": ",", "%": " percent", "&": " and ",
+}
+
+
+def plain_text(text: str) -> str:
+    """Reduce dictated text to letters, digits, spaces, . , ? and " - " dashes (plus in-word ' and -)."""
+    import re
+    import unicodedata
+    if not text:
+        return text
+    lead = " " if text[:1].isspace() else ""
+    t = text.replace("--", "\u2014")
+    t = "".join(_CHAR_MAP.get(c, c) for c in t)
+    t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode()  # e.g. cafe for café
+    t = re.sub(r"(?<=\d):(?=\d)", "\x00", t)                # keep 10:30
+    t = re.sub(r"(?<=[A-Za-z0-9])'(?=[A-Za-z])", "\x01", t)   # don't, user's
+    t = re.sub(r"(?<=[A-Za-z0-9])-(?=[A-Za-z0-9])", "\x02", t)  # re-run, large-v3
+    t = re.sub(r"(?<=\s)-(?=\s)", "\x03", t)                 # spaced " - " is a dash
+    t = t.replace(":", ",")
+    t = re.sub(r"[^A-Za-z0-9 .,?\x00\x01\x02\x03]", " ", t)
+    t = t.replace("\x00", ":").replace("\x01", "'").replace("\x02", "-")
+    t = re.sub(r"\s+([.,?])", r"\1", t)              # no space before punctuation
+    t = re.sub(r",(\s*,)+", ",", t)                   # ", ," -> ","
+    t = re.sub(r",\s*([.?])", r"\1", t)              # ", ." -> "."
+    t = re.sub(r"^[\s.,?]*,", "", t)                  # no leading comma
+    t = re.sub(r"(\s*\x03\s*)+", " \x03 ", t)            # one dash, spaced
+    t = re.sub(r"^[\s\x03.,?]+|[\s\x03]+$", "", t)       # no leading dash/punct, no trailing dash
+    t = re.sub(r",?\s*\x03\s*,?", " \x03 ", t)
+    t = re.sub(r"\s+", " ", t).strip().replace("\x03", "-")
+    return lead + t if t else ""
+
+
 class OutputMode(Enum):
     TYPE = "type"           # Type directly into active window
     CLIPBOARD = "clipboard" # Copy to clipboard only
@@ -165,6 +206,9 @@ class TextOutput:
         Returns True if all operations succeeded.
         """
         success = True
+        text = plain_text(text)
+        if not text.strip():
+            return True
 
         if self.mode in (OutputMode.TYPE, OutputMode.BOTH):
             success = self.type_text(text) and success
@@ -247,7 +291,9 @@ class TextProcessor:
         if not text:
             return text
 
-        result = text
+        result = plain_text(text)
+        if not result:
+            return result
 
         # Capitalize first letter of sentences
         if self.auto_capitalize and self._sentence_start:
