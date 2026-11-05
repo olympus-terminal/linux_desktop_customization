@@ -42,8 +42,8 @@ TYPE_ONLY_CLASSES = {
 # brackets or quotation marks"; "maybe m-dashes are okay"). Typed text keeps only letters,
 # digits, spaces and . , ? plus dashes, typed as plain " - ".
 # Apostrophes survive only inside words (don't, user's), hyphens only between letters/digits
-# (re-run, large-v3). Non-ASCII is never typed: xdotool types such characters by remapping a
-# spare key on the fly, and terminals sometimes read the wrong key (stray "}" after words).
+# (re-run, large-v3). Non-ASCII is never typed. Stray "}" after words is NOT caused by the text:
+# see _first_layout_keys.
 _CHAR_MAP = {
     "\u2018": "'", "\u2019": "'", "\u02bc": "'", "`": "'",
     "\u2026": "...", "\u2014": " \x03 ", "\u2013": " \x03 ",
@@ -91,6 +91,44 @@ def plain_text(text: str) -> str:
     t = re.sub(r",?\s*\x03\s*,?", " \x03 ", t)
     t = re.sub(r"\s+", " ", t).strip().replace("\x03", "-")
     return lead + t if t else ""
+
+
+# Keysym names for the punctuation plain_text() can emit (letters and digits name themselves).
+_KEYSYM_CHARS = {
+    "space": " ", "comma": ",", "period": ".", "question": "?", "minus": "-",
+    "apostrophe": "'", "colon": ":", "slash": "/",
+}
+
+
+def _first_layout_keys() -> dict:
+    """Map each typeable character to an xdotool key token in the FIRST keyboard layout.
+
+    Why not `xdotool type`: with several layouts (here us,pt,th,us) it uses the first match in a
+    table sorted by keycode across ALL layouts, and locks the keyboard to that layout around each
+    key (xdo.c, _xdo_send_key). Comma resolves to Thai Shift+keycode 35, which is "}" in US;
+    period to Thai Shift+48, which is '"' in US. Those wrong characters reached the terminal after
+    the text filter had already passed a clean comma (2026-11-05). Numeric keycodes are sent in
+    the first layout with no switch to another one.
+    """
+    keys = {"\n": "Return", "\t": "Tab"}
+    try:
+        table = subprocess.run(
+            ["xmodmap", "-pke"], capture_output=True, text=True, timeout=2,
+        ).stdout
+    except Exception:
+        return {}
+    for line in table.splitlines():
+        # keycode  59 = comma less comma semicolon ...   (first two names: first layout, plain and Shift)
+        parts = line.split()
+        if len(parts) < 4 or parts[0] != "keycode":
+            continue
+        for name, prefix in zip(parts[3:5], ("", "shift+")):
+            char = _KEYSYM_CHARS.get(name)
+            if char is None and len(name) == 1 and name.isascii() and name.isalnum():
+                char = name
+            if char is not None:
+                keys.setdefault(char, prefix + parts[1])
+    return keys
 
 
 class OutputMode(Enum):
@@ -171,14 +209,22 @@ class TextOutput:
             return True
 
         try:
-            cmd = ["xdotool", "type", "--clearmodifiers"]
+            keys = _first_layout_keys()
+            tokens = [keys.get(c) for c in text]
+            if all(tokens):
+                cmd = ["xdotool", "key", "--clearmodifiers"]
+            else:
+                # First layout lacks a character (not Latin, or xmodmap failed).
+                missing = sorted({c for c, t in zip(text, tokens) if not t})
+                print(f" [no first-layout key for {missing}: using xdotool type]", end="")
+                cmd = ["xdotool", "type", "--clearmodifiers"]
 
             if self.typing_delay_ms > 0:
                 cmd.extend(["--delay", str(self.typing_delay_ms)])
 
-            cmd.append(text)
+            cmd.extend(tokens if all(tokens) else [text])
 
-            subprocess.run(cmd, check=True, timeout=10)
+            subprocess.run(cmd, check=True, timeout=max(10, len(text) * 0.1))
             return True
         except subprocess.TimeoutExpired:
             print("xdotool timed out")
