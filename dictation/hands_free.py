@@ -239,9 +239,7 @@ class HandsFreeDictation:
                         if remaining_text:
                             processed = self.processor.process(remaining_text)
                             processed = self.command_processor.apply_formatting(processed)
-                            if processed and not processed[0].isupper():
-                                processed = " " + processed
-                            self.output.output(processed)
+                            self.output.output(processed + " " if processed else processed)
                             print(f" + \"{processed}\"")
 
                         self.indicator.set_status(TrayStatus.IDLE)
@@ -250,12 +248,10 @@ class HandsFreeDictation:
                 # No command (or commands disabled) - just type the text
                 processed = self.processor.process(text)
 
-                # Add space before if not starting sentence
-                if processed and not processed[0].isupper():
-                    processed = " " + processed
-
                 print(f" \"{processed}\"")
-                self.output.output(processed)
+                # Space after, not before: utterances stay apart ("stuff. I thought", never
+                # "stuff.I thought") and a fresh prompt does not start with a space.
+                self.output.output(processed + " " if processed else processed)
             else:
                 print(" (no speech detected)")
 

@@ -71,6 +71,7 @@ def plain_text(text: str) -> str:
     if not text:
         return text
     lead = " " if text[:1].isspace() else ""
+    trail = " " if text[-1:].isspace() else ""
     t = text.replace("--", "\u2014")
     t = "".join(_CHAR_MAP.get(c, c) for c in t)
     t = "".join(_to_ascii(c) for c in t)                  # cafe for café, space for unknown symbols
@@ -90,8 +91,12 @@ def plain_text(text: str) -> str:
     t = re.sub(r"^[\s\x03.,?]+|[\s\x03]+$", "", t)       # no leading dash/punct, no trailing dash
     t = re.sub(r",?\s*\x03\s*,?", " \x03 ", t)
     t = re.sub(r"\s+", " ", t).strip().replace("\x03", "-")
-    return lead + t if t else ""
+    return lead + t + trail if t else ""
 
+
+# ms between keys for xdotool key, whose own default of 12 made typing twice as slow as
+# xdotool type (13 vs 6.4 ms per character). 4 gives 4.6 ms per character.
+KEY_DELAY_MS = 4
 
 # Keysym names for the punctuation plain_text() can emit (letters and digits name themselves).
 _KEYSYM_CHARS = {
@@ -213,14 +218,14 @@ class TextOutput:
             tokens = [keys.get(c) for c in text]
             if all(tokens):
                 cmd = ["xdotool", "key", "--clearmodifiers"]
+                cmd.extend(["--delay", str(self.typing_delay_ms or KEY_DELAY_MS)])
             else:
                 # First layout lacks a character (not Latin, or xmodmap failed).
                 missing = sorted({c for c, t in zip(text, tokens) if not t})
                 print(f" [no first-layout key for {missing}: using xdotool type]", end="")
                 cmd = ["xdotool", "type", "--clearmodifiers"]
-
-            if self.typing_delay_ms > 0:
-                cmd.extend(["--delay", str(self.typing_delay_ms)])
+                if self.typing_delay_ms > 0:
+                    cmd.extend(["--delay", str(self.typing_delay_ms)])
 
             cmd.extend(tokens if all(tokens) else [text])
 
