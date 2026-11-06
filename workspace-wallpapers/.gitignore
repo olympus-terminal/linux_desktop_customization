@@ -1,0 +1,16 @@
+# Wallpaper directories (too large for git)
+wallpapers/
+wallpapers-dark/
+hand-picked/
+scraped-wallpapers/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Analysis output
+wallpaper_analysis.json
+
+# Temporary files
+*.tmp
+*.swp
