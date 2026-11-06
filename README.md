@@ -266,9 +266,21 @@ conda activate tts-app
 ~/Documents/Dictation/dictate-handsfree.sh -d "Your Mic Name"
 ```
 
-The script's default microphone is `RØDE NT-USB+`; change `DEFAULT_DEVICE` in it or pass `-d`. To add your own spellings without publishing them, put them in `vocabulary.local.txt`, which git ignores.
+To choose a microphone every time, set `SOTTO_AUDIO_DEVICE` instead of passing `-d`. To add your own spellings without publishing them, put them in `vocabulary.local.txt`, which git ignores.
 
-This copy holds the committed files of the working dictation repo at commit `195aab9`. To refresh it from that repo: `git -C ~/Documents/Dictation archive HEAD | tar -x -C dictation`.
+---
+
+## Absorbed Repositories
+
+Three separate repositories now live here, each with its full commit history:
+
+| Folder | Formerly | What it is |
+|---|---|---|
+| `dictation/` | `sotto-scribe` (earlier `voice-dictation`, `voice-to-text-gpu`) | The voice dictation app. Its CI runs from `.github/workflows/` |
+| `ghost_terminal/` | `ghost_terminal` | A self-contained desktop pack with its own `install.sh` and about 290 MB of extra wallpapers, plus the full freeze investigation in `CompositorUnfreeze/` |
+| `workspace-wallpapers/` | `workspace-wallpapers` | The original wallpaper switcher and its tools |
+
+`restore.sh` and `configs/` are the current setup, and `restore.sh` installs only the `dictation/` folder from this table. The switcher copies in `ghost_terminal/` and `workspace-wallpapers/` are kept as history and also ship switched off. To see one project's history: `git log -- dictation/`. A full clone is now about 500 MB.
 
 ---
 
@@ -503,7 +515,10 @@ linux_desktop_customization/
     gnome-keybindings.dconf              # workspace/window/screenshot/terminal shortcuts, Super+T tiler
     gnome-window-tiler                   # Super+T window tiling script
     long-command-notify.bash             # notify when a long terminal command finishes
-  dictation/                             # hands-free voice dictation app
+  dictation/                             # hands-free voice dictation app (full history)
+  ghost_terminal/                        # earlier desktop pack and freeze investigation (full history)
+  workspace-wallpapers/                  # original wallpaper switcher (full history)
+  .github/workflows/                     # dictation tests
   check-hotkeys.sh                       # verify shortcuts after updates (--fix reloads them)
     gnome-terminal.dconf                 # terminal profile (colors, transparency, size)
     gnome-desktop-interface.dconf        # system theme, fonts, color scheme

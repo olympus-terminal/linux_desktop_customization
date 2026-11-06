@@ -7,4 +7,4 @@ Icon=preferences-desktop-wallpaper
 Terminal=false
 Categories=Utility;
 StartupNotify=false
-X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-enabled=false

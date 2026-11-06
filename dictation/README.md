@@ -29,17 +29,17 @@ GPU-accelerated real-time voice dictation using [faster-whisper](https://github.
 
 ```bash
 # Create conda environment
-conda create -n dictation python=3.11
-conda activate dictation
+conda create -n tts-app python=3.10
+conda activate tts-app
 
 # Install PyTorch with CUDA
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
 # Install dependencies
-pip install faster-whisper silero-vad pyaudio numpy pynput
+pip install -r requirements.txt
 
 # System dependencies (Ubuntu/Debian)
-sudo apt install ffmpeg xdotool portaudio19-dev
+sudo apt install ffmpeg xdotool xclip portaudio19-dev
 ```
 
 ## Usage

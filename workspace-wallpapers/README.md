@@ -4,6 +4,8 @@
 
 # Dynamic Workspace Wallpapers for Ubuntu
 
+> Formerly its own repository, now part of [linux_desktop_customization](https://github.com/olympus-terminal/linux_desktop_customization), which is the current setup.
+
 Automatically switch wallpapers when changing workspaces in Ubuntu GNOME. Each workspace gets its own unique dark wallpaper.
 
 ## Features
@@ -12,7 +14,7 @@ Automatically switch wallpapers when changing workspaces in Ubuntu GNOME. Each w
 - 🌙 Ultra-dark wallpapers (84-98% darkness)
 - 🖥️ Optimized for Samsung Odyssey G9 (5120x1440)
 - 🔄 Auto-corrects if wrong wallpaper appears
-- 🚀 Starts automatically on boot
+- 🚀 Can start at login; off by default because of a [freeze risk](https://github.com/olympus-terminal/linux_desktop_customization#desktop-freezes-when-switching-workspaces)
 
 ## Components
 
@@ -45,7 +47,7 @@ python3 wallpaper_scraper.py
 ./workspace-wallpapers.sh --daemon
 ```
 
-4. Enable auto-start on boot:
+4. Install the auto-start entry. It ships off; set `X-GNOME-Autostart-enabled=true` to enable it, accepting the freeze risk above:
 ```bash
 mkdir -p ~/.config/autostart
 cp workspace-wallpapers.desktop ~/.config/autostart/

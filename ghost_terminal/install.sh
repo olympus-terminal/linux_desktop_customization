@@ -81,7 +81,7 @@ if [ -f "$PACK_DIR/autostart/workspace-wallpapers.desktop" ]; then
     sed "s|Exec=.*|Exec=$PACK_DIR/daemon/workspace-wallpapers-fast.sh|" \
         "$PACK_DIR/autostart/workspace-wallpapers.desktop" \
         > "$AUTOSTART_DIR/workspace-wallpapers.desktop"
-    echo "    Daemon will auto-start on login."
+    echo "    Installed switched off: it is the likely trigger of a GNOME Shell freeze (see the top-level README)."
 else
     echo "    SKIP: No autostart .desktop file found."
 fi

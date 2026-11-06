@@ -4,13 +4,15 @@
 
 # ghost_terminal
 
+> Formerly its own repository, now part of [linux_desktop_customization](https://github.com/olympus-terminal/linux_desktop_customization), which is the current setup.
+
 Widescreen dark desktop environment for GNOME: transparent black terminals, sci-fi wallpapers, workspace-aware wallpaper switching, and window tiling. Built for ultrawide (5120x1440) displays.
 
 ## Quick Install
 
 ```bash
-git clone git@github.com:olympus-terminal/ghost_terminal.git
-cd ghost_terminal
+git clone https://github.com/olympus-terminal/linux_desktop_customization.git
+cd linux_desktop_customization/ghost_terminal
 ./install.sh
 ```
 
@@ -18,7 +20,7 @@ This will:
 - Load the transparent terminal profile (black bg, 42% transparency, green text)
 - Set GNOME to dark mode
 - Install 65+ dark/sci-fi wallpapers
-- Set up workspace wallpaper daemon (auto-starts on login)
+- Set up workspace wallpaper daemon, switched off at login ([why](https://github.com/olympus-terminal/linux_desktop_customization#desktop-freezes-when-switching-workspaces))
 - Configure 11 static workspaces with tiling shortcuts
 
 ## The Terminal
@@ -54,7 +56,7 @@ Each of 11 workspaces gets its own wallpaper. The daemon listens for D-Bus works
 # Start manually
 ./daemon/workspace-wallpapers-fast.sh &
 
-# The installer sets this up to auto-start on login via:
+# The installer adds this autostart entry, switched off because of the freeze risk:
 # ~/.config/autostart/workspace-wallpapers.desktop
 ```
 
@@ -133,7 +135,7 @@ ghost_terminal/
 │   ├── preview_and_filter.py
 │   └── process_topaz_light.py
 └── autostart/
-    └── workspace-wallpapers.desktop   # Login autostart entry
+    └── workspace-wallpapers.desktop   # Login autostart entry (shipped off)
 ```
 
 ## Requirements
