@@ -24,7 +24,7 @@ echo ""
 
 # 0a. System dependencies
 echo "[0a/12] System dependencies..."
-REQUIRED_PKGS=(gnome-terminal nemo wmctrl xdotool x11-utils)
+REQUIRED_PKGS=(gnome-terminal nemo wmctrl xdotool x11-utils libnotify-bin)
 MISSING_PKGS=()
 for pkg in "${REQUIRED_PKGS[@]}"; do
     if ! dpkg -s "$pkg" &>/dev/null; then
@@ -130,6 +130,17 @@ fi
 run mkdir -p ~/.local/bin
 run cp "$CONFIGS/gnome-window-tiler" ~/.local/bin/gnome-window-tiler
 run chmod +x ~/.local/bin/gnome-window-tiler
+
+# 6b. Notify when a long command finishes (sourced at the end of ~/.bashrc)
+echo "[6b/12] Long-command notifications..."
+run mkdir -p ~/.config/bash
+run cp "$CONFIGS/long-command-notify.bash" ~/.config/bash/long-command-notify.bash
+if ! grep -qs 'long-command-notify' ~/.bashrc; then
+    if $DRY_RUN; then echo "[dry-run] append long-command-notify source line to ~/.bashrc"; else
+        printf '\n# Desktop notification when a command runs 60 s or longer (linux_desktop_customization)\n[ -f ~/.config/bash/long-command-notify.bash ] && source ~/.config/bash/long-command-notify.bash\n' >> ~/.bashrc
+    fi
+    echo "       Added source line to ~/.bashrc"
+fi
 
 # 7. dconf settings
 echo "[7/12] dconf settings..."

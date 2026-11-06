@@ -11,6 +11,7 @@ A complete, portable desktop theme where every application layer is transparent 
 - **Code editor** — VS Code with vibrancy + glass extensions, alpha-channel backgrounds on all surfaces
 - **Wallpapers** — 11 dark sci-fi cityscapes (Midjourney v7 + Topaz upscale), one per workspace, auto-switching daemon
 - **Hotkeys** — Ctrl+1…0 jump to workspaces 1–10, Ctrl+Space opens a terminal, Super+T tiles windows (full table below)
+- **Long-command notifications** — a desktop notification when a terminal command that ran 60 s or longer finishes
 - **System** — Yaru-dark theme, `prefer-dark` color scheme, consistent green accent (`#96d5a2`) throughout
 
 ## Dependencies
@@ -32,7 +33,7 @@ A complete, portable desktop theme where every application layer is transparent 
 ### Required Packages
 
 ```bash
-sudo apt install gnome-shell gnome-terminal nemo wmctrl xdotool x11-utils
+sudo apt install gnome-shell gnome-terminal nemo wmctrl xdotool x11-utils libnotify-bin
 ```
 
 | Package | Version | Purpose |
@@ -42,6 +43,7 @@ sudo apt install gnome-shell gnome-terminal nemo wmctrl xdotool x11-utils
 | `wmctrl` | 1.07 | Workspace detection for wallpaper daemon |
 | `xdotool` | 3.20160805.1 | Window search for nemo-glass opacity wrapper |
 | `x11-utils` | 7.7+6 | Provides `xprop` for setting window opacity |
+| `libnotify-bin` | 0.8.3 | `notify-send` for long-command notifications |
 
 ### GNOME Shell Extensions
 
@@ -120,7 +122,7 @@ Then log out and back in, or restart GNOME Shell: `killall -HUP gnome-shell`
 
 | Step | Action | Files touched |
 |------|--------|---------------|
-| 0a | Install system dependencies (apt) | `gnome-terminal`, `nemo`, `wmctrl`, `xdotool`, `x11-utils` |
+| 0a | Install system dependencies (apt) | `gnome-terminal`, `nemo`, `wmctrl`, `xdotool`, `x11-utils`, `libnotify-bin` |
 | 0b | Install + enable GNOME Shell extensions | `ding`, `tiling-assistant`, `ubuntu-appindicators`, `ubuntu-dock` |
 | 0c | Install coding fonts (apt) | `fonts-jetbrains-mono`, `fonts-firacode`, `fonts-cascadia-code`, `fonts-hack` |
 | 1 | GTK3 dark-glass CSS | `~/.config/gtk-3.0/gtk.css` |
@@ -129,6 +131,7 @@ Then log out and back in, or restart GNOME Shell: `killall -HUP gnome-shell`
 | 4 | Wallpaper switching daemon | `~/Documents/desktops/workspace-wallpapers-fast.sh` |
 | 5 | Autostart for wallpaper daemon | `~/.config/autostart/workspace-wallpapers.desktop` |
 | 6 | Shortcut prerequisites: conda `gsettings` fix, window tiler script | `~/.bashrc`, `~/.profile`, `~/.local/bin/gnome-window-tiler` |
+| 6b | Long-command notifications | `~/.config/bash/long-command-notify.bash`, `~/.bashrc` |
 | 7 | dconf databases (terminal, theme, Nemo, WM, extensions, background, keybindings) | dconf user database |
 | 8 | Wallpaper images (11 PNGs, ~119 MB) | `~/Documents/desktops/MJ7-Topaz/light-processed-dark20/` |
 | 9 | System no-suspend override (needs sudo) | `/etc/dconf/db/local.d/00-no-suspend` |
@@ -219,6 +222,24 @@ It lets conda's `gsettings` (in base and every env) load the system dconf module
 ### Saving shortcut changes
 
 To capture changes after editing shortcuts in Settings, re-dump the five paths (`org/gnome/desktop/wm/keybindings`, `org/gnome/mutter/keybindings`, `org/gnome/shell/keybindings`, `org/gnome/settings-daemon/plugins/media-keys`, `org/gnome/terminal/legacy/keybindings`) into `configs/gnome-keybindings.dconf`, replacing your home path with `@HOME@`.
+
+---
+
+## Long-Command Notifications
+
+When a command typed in the terminal runs for 60 s or longer, a desktop notification appears as it finishes: "Done after 4m 12s" or "Failed (exit 1) after 4m 12s", with the command line and its folder. Useful for rsyncs, builds, training runs and anything else you leave running in another workspace.
+
+- Quiet for Ctrl+C (exit 130) and Ctrl+Z (148): you were at the terminal anyway.
+- Quiet for programs you sit inside (`claude`, `codex`, `ssh`, `vim`, `less`, `mpv`, `tmux`, ...); aliases count by the program they run, so `cl` is ignored as `claude`.
+- Time spent at the prompt before pressing Enter is not counted; neither is time spent tab-completing.
+- `configs/long-command-notify.bash`, installed to `~/.config/bash/` and sourced at the end of `~/.bashrc`. It uses a `DEBUG` trap and the `PROMPT_COMMAND` array (bash 5.1+) and keeps VTE's own prompt hook.
+
+Change the threshold or ignore list by setting these before the `source` line in `~/.bashrc`:
+
+```bash
+LONGCMD_NOTIFY_SECS=120
+LONGCMD_NOTIFY_IGNORE="claude codex ssh vim less mpv tmux"
+```
 
 ---
 
@@ -427,6 +448,7 @@ linux_desktop_customization/
     workspace-wallpapers.desktop         # XDG autostart for wallpaper daemon
     gnome-keybindings.dconf              # workspace/window/screenshot/terminal shortcuts, Super+T tiler
     gnome-window-tiler                   # Super+T window tiling script
+    long-command-notify.bash             # notify when a long terminal command finishes
   check-hotkeys.sh                       # verify shortcuts after updates (--fix reloads them)
     gnome-terminal.dconf                 # terminal profile (colors, transparency, size)
     gnome-desktop-interface.dconf        # system theme, fonts, color scheme
