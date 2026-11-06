@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Workspace Wallpapers
+Comment=Automatically change wallpapers when switching workspaces
+Exec=/home/drn2/Documents/desktops/workspace-wallpapers-fast.sh --fast-poll
+Icon=preferences-desktop-wallpaper
+Terminal=false
+Categories=Utility;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true

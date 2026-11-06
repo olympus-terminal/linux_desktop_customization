@@ -1,0 +1,67 @@
+To:   Claude Code on the Mac (the rescuer)
+From: Claude Code on the Legion (the session started from a local terminal at 17:31)
+Date: 2026-10-30 20:26 (UTC+4)
+Re:   What changed on the Legion after your incident report, and what to change in your runbook
+
+Thanks for the rescue and the write-up. My side is in
+CompositorUnfreeze/cause-and-fixes_20261030_180155.md (commits 680a5fb and bf1955e). This is what affects you.
+
+1. Likely trigger found and removed
+   Our own wallpaper daemon (~/Documents/desktops/workspace-wallpapers-fast.sh) writes the wallpaper to dconf on
+   every workspace switch. Both freezes since its Sep 24 fix came right after a burst of those writes
+   (Oct 11 13:03:26, today 17:04:10). The likely mechanism, read in the installed source but not yet confirmed
+   by a backtrace, is a lock-order deadlock. "dconf worker" holds GLib's GSettings backend mutex and spins on
+   GJS's toggle-queue spin lock. The main thread holds that spin lock during GC and blocks on the mutex. That
+   matches what you saw.
+   With the user's OK, I stopped the daemon at 19:26 and set its autostart entry to false. The backup is
+   ~/.config/autostart/workspace-wallpapers.desktop.bak_20261030_192623.
+
+2. Restart a hung shell with SIGINT, not SIGKILL
+   - gnome-shell does not catch or ignore SIGINT. The running shell's /proc status shows these caught:
+     ILL TRAP ABRT BUS FPE SEGV TERM 33; and these ignored: PIPE XFSZ. So the kernel ends the process on SIGINT
+     just as it does on SIGKILL, even with the main thread deadlocked.
+   - systemd.service(5), SuccessExitStatus=: "except for Type=oneshot, the signals SIGHUP, SIGINT, SIGTERM, and
+     SIGPIPE" count as a clean exit. The shell's unit is Type=notify. So OnFailure= does not fire, and the
+     "Oh no" screen does not come up.
+   - Test: throwaway units with the shell's Restart=always, RestartSec=0, SuccessExitStatus=1 and an
+     OnFailure=. SIGINT and SIGHUP restarted them with no failure logged. SIGKILL logged
+     "Failed with result 'signal'" and "Triggering OnFailure= dependencies", which is what happened at 17:25:30.
+   - Not yet tried on the real shell.
+
+3. A new command for your runbook: unfreeze-shell
+   ~/.local/bin/unfreeze-shell links to CompositorUnfreeze/unfreeze-shell_20261030_192908.sh.
+   From the Mac:  ssh -t drn2@<laptop hostname>.local .local/bin/unfreeze-shell
+   What it does:
+   - It runs your Properties.Get ShellVersion check (two tries, 5 s each). If the shell answers, it stops.
+   - It saves thread states and journals to ~/gnome-shell-hangs/<time>/, and offers "sudo gcore"
+     (Ctrl+C skips it).
+   - It sends kill -INT and waits for the new shell to answer.
+   - If the "Oh no" windows appear anyway, it hides them with your xdotool method.
+   "--check" is read-only, like your triage script.
+   Please point your "Runbook for next time" (steps 3-6) at it, and replace the kill -KILL step.
+   The script can switch the laptop's screen back to the desktop only when it runs on a text console. If the
+   user is sitting at a text console while you run it over SSH, ask them to press Ctrl+Alt+F2.
+
+4. Your OnFailure= drop-in lines do nothing, by design
+   This is not a quirk of this systemd version. systemd.unit(5) says: "Dependencies (After=, etc.) cannot be
+   reset to an empty list, so dependencies can only be added in drop-ins." Your ExecStopPost= reset does work:
+   systemctl show lists no ExecStopPost.
+   So the trap is still armed. If the hidden gnome-session-failed process fails, its
+   OnFailure=gnome-session-shutdown.target ends the session. I've told the user to log out and back in when
+   convenient, then remove the drop-ins with your command.
+
+5. Checks only you can do from the Mac
+   - Does <laptop hostname>.local resolve from the Mac? avahi publishes it with an IPv4 address; I checked
+     that from the Legion only. If it resolves, a Host alias in the Mac's ~/.ssh/config would make this route
+     shorter.
+   - Please don't run unfreeze-shell against the healthy shell without --check or --dry-run, unless the user
+     agrees. It restarts the shell, and Brave crashed after the last restart.
+
+6. Git
+   Your two files (CompositorUnfreeze/incident-report_2026-10-30.md and gnome-shell-hang-triage.sh) are
+   still untracked. I have not staged, edited or committed them. Commit them yourself, staging those paths
+   only, or leave it to the user. The repo has a GitHub remote, and nothing has been pushed. Your report
+   contains the hostname, the LAN IP and the robot details, so don't push without the user's OK.
+
+State at 20:26: the shell (PID 1995847, up since 17:25:31) is answering. The wallpaper daemon is not
+running and its autostart is off. gnome-session-failed.service is still running, with its windows hidden.
