@@ -1,0 +1,37 @@
+name: Offline fail-closed tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Validate launchers and Python syntax
+        run: |
+          bash -n run.sh dictate-handsfree.sh
+          python3 - <<'PY'
+          from pathlib import Path
+
+          paths = sorted(Path(".").glob("*.py"))
+          paths.extend(sorted(Path("tests").glob("*.py")))
+          for path in paths:
+              compile(path.read_text(encoding="utf-8"), str(path), "exec")
+              print(f"syntax OK: {path}")
+          PY
+          python3 transcriber.py --help >/dev/null
+
+      - name: Run offline fail-closed suite
+        run: python3 tests/test_transcriber_fail_closed_20260712_095419.py -v
