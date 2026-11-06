@@ -1,5 +1,0 @@
-# Example spelling list. For your own terms, create vocabulary.local.txt (same format, git-ignored);
-# it is used instead of this file. One term per line or comma-separated; '#' lines are ignored.
-# Passed to faster-whisper as initial_prompt, which biases spelling; keep it short (Whisper reads ~200 tokens of it).
-Claude Code, Claude, Anthropic, Codex, OpenCode, GitHub, Python
-GPU, HPC, Slurm, sbatch, squeue, vLLM, README, NOTES.md, CLAUDE.md, repo, git commit, terminal
