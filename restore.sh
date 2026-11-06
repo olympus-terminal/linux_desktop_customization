@@ -105,7 +105,9 @@ run cp "$CONFIGS/workspace-wallpapers-fast.sh" ~/Documents/desktops/workspace-wa
 run chmod +x ~/Documents/desktops/workspace-wallpapers-fast.sh
 
 # 5. Autostart entry
-echo "[5/12] Autostart entry..."
+#    Installed switched OFF: the daemon's wallpaper writes are the likely trigger of
+#    the GNOME Shell freeze. README: "Desktop freezes when switching workspaces".
+echo "[5/12] Autostart entry (wallpaper daemon stays off at login)..."
 run mkdir -p ~/.config/autostart
 run cp "$CONFIGS/workspace-wallpapers.desktop" ~/.config/autostart/workspace-wallpapers.desktop
 
@@ -141,6 +143,12 @@ if ! grep -qs 'long-command-notify' ~/.bashrc; then
     fi
     echo "       Added source line to ~/.bashrc"
 fi
+
+# 6c. Recovery command for a hung GNOME Shell
+echo "[6c/12] unfreeze-shell..."
+run mkdir -p ~/.local/bin
+run cp "$CONFIGS/unfreeze-shell" ~/.local/bin/unfreeze-shell
+run chmod +x ~/.local/bin/unfreeze-shell
 
 # 7. dconf settings
 echo "[7/12] dconf settings..."
@@ -216,5 +224,5 @@ echo "=== Done ==="
 echo ""
 echo "Remaining manual steps:"
 echo "  1. Log out and back in (or run: killall -HUP gnome-shell)"
-echo "  2. Verify: switch workspaces to confirm wallpaper rotation"
+echo "  2. Workspace wallpapers stay off unless you opt in; see \"Desktop freezes when switching workspaces\" in README.md"
 echo "  3. If using VS Code: allow vibrancy CSS injection when prompted, then restart"

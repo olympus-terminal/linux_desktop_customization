@@ -9,7 +9,8 @@ A complete, portable desktop theme where every application layer is transparent 
 - **Terminal** — GNOME Terminal with 42% transparent black background, green text (`rgb(150,213,162)`)
 - **File manager** — Nemo with true-black surfaces at 82% compositor opacity, wallpaper visible through every window
 - **Code editor** — VS Code with vibrancy + glass extensions, alpha-channel backgrounds on all surfaces
-- **Wallpapers** — 11 dark sci-fi cityscapes (Midjourney v7 + Topaz upscale), one per workspace, auto-switching daemon
+- **Wallpapers** — 11 dark sci-fi cityscapes (Midjourney v7 + Topaz upscale), one per workspace; the auto-switching daemon is included but off by default ([why](#desktop-freezes-when-switching-workspaces))
+- **Freeze recovery** — `unfreeze-shell` restarts a hung GNOME Shell from a text console or SSH, with windows left open
 - **Hotkeys** — Ctrl+1…0 jump to workspaces 1–10, Ctrl+Space opens a terminal, Super+T tiles windows (full table below)
 - **Long-command notifications** — a desktop notification when a terminal command that ran 60 s or longer finishes
 - **System** — Yaru-dark theme, `prefer-dark` color scheme, consistent green accent (`#96d5a2`) throughout
@@ -128,10 +129,11 @@ Then log out and back in, or restart GNOME Shell: `killall -HUP gnome-shell`
 | 1 | GTK3 dark-glass CSS | `~/.config/gtk-3.0/gtk.css` |
 | 2 | VS Code settings + extensions | `~/.config/Code/User/settings.json` |
 | 3 | Nemo glass wrapper script | `~/.local/bin/nemo-glass` |
-| 4 | Wallpaper switching daemon | `~/Documents/desktops/workspace-wallpapers-fast.sh` |
-| 5 | Autostart for wallpaper daemon | `~/.config/autostart/workspace-wallpapers.desktop` |
+| 4 | Wallpaper switching daemon (not started) | `~/Documents/desktops/workspace-wallpapers-fast.sh` |
+| 5 | Autostart entry for the daemon, switched off | `~/.config/autostart/workspace-wallpapers.desktop` |
 | 6 | Shortcut prerequisites: conda `gsettings` fix, window tiler script | `~/.bashrc`, `~/.profile`, `~/.local/bin/gnome-window-tiler` |
 | 6b | Long-command notifications | `~/.config/bash/long-command-notify.bash`, `~/.bashrc` |
+| 6c | Freeze recovery command | `~/.local/bin/unfreeze-shell` |
 | 7 | dconf databases (terminal, theme, Nemo, WM, extensions, background, keybindings) | dconf user database |
 | 8 | Wallpaper images (11 PNGs, ~119 MB) | `~/Documents/desktops/MJ7-Topaz/light-processed-dark20/` |
 | 9 | System no-suspend override (needs sudo) | `/etc/dconf/db/local.d/00-no-suspend` |
@@ -288,7 +290,7 @@ To make `nemo-glass` the default file manager, set it in your `.desktop` file as
 
 A bash daemon (`workspace-wallpapers-fast.sh`) polls `wmctrl` at 50ms intervals to detect workspace switches and sets the wallpaper via `gsettings`. Images from the wallpaper directory are assigned to workspaces in alphabetical order.
 
-The daemon auto-starts at login via `~/.config/autostart/workspace-wallpapers.desktop`.
+The daemon does **not** start at login: `~/.config/autostart/workspace-wallpapers.desktop` ships with `X-GNOME-Autostart-enabled=false`, because its wallpaper writes are the likely trigger of a GNOME Shell freeze. See [Desktop freezes when switching workspaces](#desktop-freezes-when-switching-workspaces) before turning it on.
 
 **Using your own wallpapers**: Replace the images in `~/Documents/desktops/MJ7-Topaz/light-processed-dark20/` with your own. Any `.jpg`, `.jpeg`, `.png`, `.bmp`, or `.tiff` files work. They're assigned to workspaces alphabetically — rename with numeric prefixes (e.g. `01-morning.png`, `02-night.png`) to control the order.
 
@@ -379,9 +381,33 @@ The external keyboard is in Mac mode, where the key labeled Alt sends Super. Ctr
 
 Run `./check-hotkeys.sh`. If it reports that `gsettings` does not see the real settings, open a new terminal (or add the `GIO_EXTRA_MODULES` line above) and try again. If it reports drift, run `./check-hotkeys.sh --fix`. See [Why shortcuts seemed to vanish after updates](#why-shortcuts-seemed-to-vanish-after-updates).
 
-### Desktop freezes when switching workspaces quickly
+### Desktop freezes when switching workspaces
 
-Older versions of `workspace-wallpapers-fast.sh` polled every 50 ms and set the wallpaper from background jobs, piling full-size PNG reloads onto GNOME Shell. The current version is event-driven, debounced, and uses screen-sized cached copies. Reinstall it from `configs/` and restart the daemon.
+**Symptom**: the screen stops responding during or right after a workspace switch, and stays frozen. Text consoles (Ctrl+Alt+F3) and SSH still work.
+
+**Likely cause**: the wallpaper daemon. It changes the wallpaper setting on every switch. Both freezes after the September 2026 rewrite came at the end of a burst of switches, about one per 3,000 wallpaper changes. Thread states from the October 30 hang showed the shell's main thread blocked on a futex while its `dconf worker` thread spun at 100% CPU. Reading the GJS and GLib source points to a lock-order deadlock between garbage collection and GSettings change notifications. No backtrace has confirmed this. Memory is not the explanation: shell memory levelled off in a test of 33 wallpaper changes, at about 45 KB per change after the first pass. Making the daemon event-driven and debounced in September stopped an older storm of writes, but did not remove this risk.
+
+**What this repo does**: the daemon is installed but stays off at login, and the current wallpaper stays on every workspace. Whether that ends the freezes is still being tested: no freeze has been seen since it was turned off on October 30, 2026, but the old rate was only about one every 18 days.
+
+**If it freezes anyway**, don't reboot:
+
+```bash
+# At the machine: Ctrl+Alt+F3, log in, then
+unfreeze-shell
+# From another computer:
+ssh -t <user>@<hostname>.local .local/bin/unfreeze-shell
+```
+
+It does nothing if the shell is answering. If the shell is hung, it saves diagnostics to `~/gnome-shell-hangs/`, offers a core dump (needs sudo; Ctrl+C skips it), and restarts the shell with SIGINT so windows stay open and the "Oh no" screen should not appear. `unfreeze-shell --check` only reports. X11 only. The SIGINT restart has been tested on dummy systemd units, not yet on a real hung shell.
+
+**To turn per-workspace wallpapers on anyway**, accepting the freeze risk:
+
+```bash
+sed -i 's/^X-GNOME-Autostart-enabled=false/X-GNOME-Autostart-enabled=true/' ~/.config/autostart/workspace-wallpapers.desktop
+setsid ~/Documents/desktops/workspace-wallpapers-fast.sh --fast-poll >/dev/null 2>&1 &
+```
+
+Check `Exec=` in that file first: the path in it is absolute (see the agent notes below).
 
 ### Black desktop — wallpaper is invisible
 
@@ -445,7 +471,8 @@ linux_desktop_customization/
     vscode-extensions.txt                # VS Code extension list
     nemo-glass                           # Nemo transparency wrapper script
     workspace-wallpapers-fast.sh         # per-workspace wallpaper daemon
-    workspace-wallpapers.desktop         # XDG autostart for wallpaper daemon
+    workspace-wallpapers.desktop         # XDG autostart for wallpaper daemon (shipped off)
+    unfreeze-shell                       # recover a hung GNOME Shell from a console or SSH
     gnome-keybindings.dconf              # workspace/window/screenshot/terminal shortcuts, Super+T tiler
     gnome-window-tiler                   # Super+T window tiling script
     long-command-notify.bash             # notify when a long terminal command finishes
