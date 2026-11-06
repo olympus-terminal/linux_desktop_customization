@@ -13,6 +13,7 @@ A complete, portable desktop theme where every application layer is transparent 
 - **Freeze recovery** — `unfreeze-shell` restarts a hung GNOME Shell from a text console or SSH, with windows left open
 - **Hotkeys** — Ctrl+1…0 jump to workspaces 1–10, Ctrl+Space opens a terminal, Super+T tiles windows (full table below)
 - **Long-command notifications** — a desktop notification when a terminal command that ran 60 s or longer finishes
+- **Voice dictation** — local, GPU-accelerated speech-to-text that types into the focused terminal
 - **System** — Yaru-dark theme, `prefer-dark` color scheme, consistent green accent (`#96d5a2`) throughout
 
 ## Dependencies
@@ -134,6 +135,7 @@ Then log out and back in, or restart GNOME Shell: `killall -HUP gnome-shell`
 | 6 | Shortcut prerequisites: conda `gsettings` fix, window tiler script | `~/.bashrc`, `~/.profile`, `~/.local/bin/gnome-window-tiler` |
 | 6b | Long-command notifications | `~/.config/bash/long-command-notify.bash`, `~/.bashrc` |
 | 6c | Freeze recovery command | `~/.local/bin/unfreeze-shell` |
+| 6d | Voice dictation (copied only if absent) | `~/Documents/Dictation/` |
 | 7 | dconf databases (terminal, theme, Nemo, WM, extensions, background, keybindings) | dconf user database |
 | 8 | Wallpaper images (11 PNGs, ~119 MB) | `~/Documents/desktops/MJ7-Topaz/light-processed-dark20/` |
 | 9 | System no-suspend override (needs sudo) | `/etc/dconf/db/local.d/00-no-suspend` |
@@ -242,6 +244,31 @@ Change the threshold or ignore list by setting these before the `source` line in
 LONGCMD_NOTIFY_SECS=120
 LONGCMD_NOTIFY_IGNORE="claude codex ssh vim less mpv tmux"
 ```
+
+---
+
+## Voice Dictation
+
+`dictation/` holds the hands-free dictation app: it listens, detects speech with Silero VAD, transcribes on the GPU with faster-whisper (`large-v3-turbo`) and types the plain text into the focused terminal. `dictation/README.md` has the full option list. `restore.sh` copies it to `~/Documents/Dictation` if nothing is there yet. It needs its packages installed once:
+
+```bash
+sudo apt install xdotool xclip portaudio19-dev
+conda create -n tts-app python=3.10 -y
+conda activate tts-app
+pip install -r ~/Documents/Dictation/requirements.txt
+```
+
+Then run it, and stop it with Ctrl+C or `pkill -f hands_free.py`:
+
+```bash
+conda activate tts-app
+~/Documents/Dictation/dictate-handsfree.sh --list-devices
+~/Documents/Dictation/dictate-handsfree.sh -d "Your Mic Name"
+```
+
+The script's default microphone is `RØDE NT-USB+`; change `DEFAULT_DEVICE` in it or pass `-d`. To add your own spellings without publishing them, put them in `vocabulary.local.txt`, which git ignores.
+
+This copy holds the committed files of the working dictation repo at commit `195aab9`. To refresh it from that repo: `git -C ~/Documents/Dictation archive HEAD | tar -x -C dictation`.
 
 ---
 
@@ -476,6 +503,7 @@ linux_desktop_customization/
     gnome-keybindings.dconf              # workspace/window/screenshot/terminal shortcuts, Super+T tiler
     gnome-window-tiler                   # Super+T window tiling script
     long-command-notify.bash             # notify when a long terminal command finishes
+  dictation/                             # hands-free voice dictation app
   check-hotkeys.sh                       # verify shortcuts after updates (--fix reloads them)
     gnome-terminal.dconf                 # terminal profile (colors, transparency, size)
     gnome-desktop-interface.dconf        # system theme, fonts, color scheme

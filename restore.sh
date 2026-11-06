@@ -150,6 +150,16 @@ run mkdir -p ~/.local/bin
 run cp "$CONFIGS/unfreeze-shell" ~/.local/bin/unfreeze-shell
 run chmod +x ~/.local/bin/unfreeze-shell
 
+# 6d. Voice dictation. Never overwrites an existing copy; the Python packages are a manual step.
+echo "[6d/12] Voice dictation..."
+if [[ -e ~/Documents/Dictation ]]; then
+    echo "       ~/Documents/Dictation already exists; left alone"
+else
+    run mkdir -p ~/Documents
+    run cp -r "$SCRIPT_DIR/dictation" ~/Documents/Dictation
+    echo "       Copied to ~/Documents/Dictation"
+fi
+
 # 7. dconf settings
 echo "[7/12] dconf settings..."
 if ! $DRY_RUN; then
@@ -226,3 +236,4 @@ echo "Remaining manual steps:"
 echo "  1. Log out and back in (or run: killall -HUP gnome-shell)"
 echo "  2. Workspace wallpapers stay off unless you opt in; see \"Desktop freezes when switching workspaces\" in README.md"
 echo "  3. If using VS Code: allow vibrancy CSS injection when prompted, then restart"
+echo "  4. For voice dictation: install its packages; see \"Voice Dictation\" in README.md"
